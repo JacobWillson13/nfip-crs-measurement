@@ -13,6 +13,8 @@ This repo has two halves:
 
 ## Where to start
 
+**Presenting it:** [WALKTHROUGH.md](WALKTHROUGH.md) has a 5-minute script and likely interview questions.
+
 **Reviewing the data engineering:** [ARCHITECTURE.md](ARCHITECTURE.md), then [pipeline/transform/sql/15_silver_policy_exposure.sql](pipeline/transform/sql/15_silver_policy_exposure.sql), [pipeline/ingest/](pipeline/ingest/), [pipeline/quality/checks.py](pipeline/quality/checks.py), and [TEST_PLAN.md](TEST_PLAN.md).
 
 **Reviewing the measurement work:** [analysis/README.md](analysis/README.md) for the measurement plan and feasibility gates, then the panel definition in [pipeline/transform/sql/30_gold_community_year_panel.sql](pipeline/transform/sql/30_gold_community_year_panel.sql).
@@ -24,7 +26,7 @@ Needs Linux or macOS, Python 3.11+, about 15 GB free disk, 16 GB RAM recommended
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,analysis]"
-pytest -q                                          # 42 tests, no network needed
+pytest -q                                          # 43 tests, no network needed
 
 # 1. API sources: national claims (about 273 API pages) and the Community Status Book
 python -m pipeline.cli ingest
@@ -68,7 +70,7 @@ pipeline/quality/             quality and reconciliation checks, feasibility rep
 pipeline/cli.py               ingest | download | register | transform | quality | report | export
 tests/                        unit and end-to-end tests against a fake API and synthetic policies
 analysis/                     measurement plan, gates, and notebooks
-dashboard/                    Power BI report on the panel
+dashboard/                    Power BI report on the panel (CSV inputs in data/export/bi/)
 ```
 
 ## Data sources

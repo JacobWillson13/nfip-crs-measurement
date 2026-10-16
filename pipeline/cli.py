@@ -132,6 +132,27 @@ def cmd_export(cfg) -> int:
         con.execute(f"copy {table} to '{target.as_posix()}' (format parquet, compression zstd)")
         rows = con.execute(f"select count(*) from {table}").fetchone()[0]
         print(f"Wrote {rows:,} rows to {target} ({target.stat().st_size / 1e6:.1f} MB)")
+
+    # CSVs for the Power BI service (browser upload takes CSV, not Parquet).
+    bi = out / "bi"
+    bi.mkdir(exist_ok=True)
+    bi_tables = {
+        "community_year": """
+            select community_id, community_name, state, county_fips, year, regime,
+                   in_crs, crs_class, crs_status_basis, crs_discount_pct_sfha,
+                   round(earned_policy_years, 2) as earned_policy_years,
+                   round(earned_premium, 0) as earned_premium, round(paid_total, 0) as paid_total,
+                   n_claims, round(share_exposure_sfha, 3) as share_exposure_sfha
+            from gold.community_year_panel where year between 2010 and 2024""",
+        "dq_results": """
+            select * from ops.dq_results
+            where run_at = (select max(run_at) from ops.dq_results)""",
+        "run_log": "select * from ops.run_log order by finished_at",
+    }
+    for name, sql in bi_tables.items():
+        target = bi / f"{name}.csv"
+        con.execute(f"copy ({sql}) to '{target.as_posix()}' (header, delimiter ',')")
+        print(f"Wrote {target} ({target.stat().st_size / 1e6:.1f} MB)")
     con.close()
     return 0
 
