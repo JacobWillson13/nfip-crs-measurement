@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
-analysis = ["pandas>=2.2", "pyfixest>=0.30", "jupyter"]
+analysis = ["pandas>=2.2", "pyfixest>=0.30", "openpyxl>=3.1", "jupyter"]
 
 [tool.setuptools.packages.find]
 include = ["pipeline*"]
