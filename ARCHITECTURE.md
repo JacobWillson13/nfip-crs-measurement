@@ -3,48 +3,70 @@
 ## Flow
 
 ```
-OpenFEMA API (NfipClaims v3)
-   │  paged by state, ordered by id, retried with backoff
-   ▼
-bronze   data/lake/bronze/nfip_claims/state=XX/part-*.parquet + _manifest.json
-   │  pinned schema, raw field names, one partition per state
-   ▼
-silver   silver.nfip_claims        one row per claim, typed, renamed, quirks handled
-   ▼
-gold     gold.community_year_claims   one row per community and year of loss
-   ▼
-ops      ops.run_log, ops.watermarks, ops.dq_results
+OpenFEMA API                                   OpenFEMA bulk file
+  NfipClaims v3 (by state)                       NfipPoliciesV3.parquet (~75M rows)
+  NfipCommunityStatusBook v1                        │ download or browser + register
+        │ paged, retried, reconciled                │ column contract, sha256, manifest
+        ▼                                           ▼
+bronze  data/lake/bronze/<dataset>/...  (API pages as pinned-schema Parquet; bulk file untouched)
+        │
+        ▼
+silver  silver.nfip_claims                    one row per claim
+        silver.community_status               one row per NFIP community (current snapshot)
+        silver.policy_exposure_community_year earned exposure, premium, CRS class by year
+        │
+        ▼
+gold    gold.community_year_claims            claims by community-year, 1978 onward
+        gold.community_year_panel             the analysis panel, 2009 onward
+        │
+        ▼
+ops     ops.run_log, ops.watermarks, ops.dq_results
 ```
 
-Everything runs locally on DuckDB and Parquet. The same layers map one to one onto a Fabric lakehouse (bronze files in OneLake, silver and gold as Delta tables) if the pipeline is ported later.
+Everything runs locally on DuckDB and Parquet. The layers map one to one onto a Fabric lakehouse (bronze files in OneLake, silver and gold as Delta tables) if ported later.
 
 ## Design decisions
 
-**Partition-level full replace, not append.** FEMA revises historical claims after the fact: payments, recoveries, and reclassified fields change on records that already exist. An id-based append would keep stale versions; an upsert needs a reliable per-record change timestamp, and v3 only exposes `asOfDate`, which is a snapshot date for the whole extract. Replacing one state at a time is idempotent, simple to reason about, and cheap at this volume.
+**API for small sources, bulk file for policies.** Claims (2.7M rows) and the Status Book (25k) come through the API, where per-state partitions, server-side counts, and refresh metadata make loads verifiable and incremental. Policies (75M rows) would take about 7,500 API requests, so they come from FEMA's bulk Parquet file. fema.gov sometimes refuses scripted bulk downloads; the `download` command detects that and falls back to a browser download plus `register`.
 
-**Dataset-level watermark.** Before loading, the loader reads `lastDataSetRefresh` from the OpenFEMA catalog. If a partition was already loaded from that refresh, it is skipped. FEMA refreshes about monthly, so a scheduled monthly run does real work once and is a no-op otherwise. `--force` overrides.
+**Bulk bronze is the untouched source file.** Rewriting 75M rows into our own Parquet would cost time and disk for no gain. Instead, `register` enforces the column contract, records row count and sha256 in a manifest, cross-checks the catalog record count, and moves the file into bronze. Re-registering an identical file is a no-op.
 
-**Stage, reconcile, then swap.** Each load writes to `_staging/<run_id>`, compares the landed row count to the API's server-side `$count` for the same filter, and only then swaps into place. A failed or mismatched load leaves the last good partition and its watermark untouched. Every attempt, including skips and failures, is recorded in `ops.run_log`.
+**Earned exposure, not a point-in-time count.** Policies in force on one date misstates exposure for policies that start or end mid-year. Each policy transaction is split across the calendar years its term overlaps, weighted by days covered, truncated at cancellation, and multiplied by `policyCount`. Premium is earned over the term the same way. This is standard actuarial earned-exposure accounting and gives the denominator for loss cost, frequency, and loss ratio.
 
-**Pinned schema.** Column types are declared in `pipeline/ingest/schema.py` rather than inferred. Inference breaks on real API data: a page where every `crsClassCode` is null would infer the wrong type, and community numbers like `060173` would lose their leading zero if read as integers. A field that disappears upstream or stops fitting its type raises `SchemaDriftError` naming the field.
+**Exposure is the panel spine.** The panel starts from community-years with earned exposure and left-joins claims, so years with no claims appear as zeros. A claims-only panel silently drops good years, which biases every rate upward.
 
-**Plain SQL instead of dbt (for now).** The transform layer is two SQL files run in order. That keeps the dependency surface small while the model count is low. If the model graph grows past a handful of tables, these files port directly to dbt-duckdb models, and the checks in `pipeline/quality/` map to dbt tests.
+**CRS class by year from policies, entry date from the Status Book.** The Status Book only holds each community's current class. Policies carry `crsClassCode` on every transaction, so the exposure-weighted modal class per community-year gives a full class history from 2009. Null class on policies is treated as Class 10 (no discount); the share of exposure with null class is kept on the panel so that assumption can be checked.
 
-**Checks as data.** Quality checks are SQL queries that return a count of failing rows, tagged `error` or `warn`. Results land in `ops.dq_results` so trends are queryable. Errors fail the run; warnings are surfaced for review. Reconciliation checks tie each layer to the one before it: landed rows to silver rows, and silver claim counts and paid totals to gold.
+**Streaming aggregation for policies.** The exposure model parses, splits, and aggregates in one pass and never materializes the 75M-row grain. Benchmarked at 10M synthetic rows in 14 seconds on 2 cores with a 3 GB memory cap; DuckDB spills to `data/tmp` if needed.
+
+**Partition-level full replace for API data.** FEMA revises historical claims after the fact. Replacing one state at a time is idempotent and avoids stale versions, which an id-based append would keep.
+
+**Dataset-level watermark.** API loads skip a partition if it was already loaded from the current `lastDataSetRefresh`. Bulk loads skip if the file hash matches. `--force` overrides both.
+
+**Stage, reconcile, then swap.** Each API partition is written to staging, its row count is compared to the API's server-side `$count`, and only then is it swapped in. A failed or mismatched load leaves the last good partition and watermark untouched.
+
+**Pinned schema for API data.** Types are declared, not inferred, so an all-null page cannot change a column type and community numbers keep leading zeros. Upstream renames or type changes raise `SchemaDriftError` naming the field.
+
+**Models declare their inputs.** Each SQL file starts with `-- requires:`. The build skips models whose inputs are not loaded yet, so sources can be added one at a time. Quality checks likewise skip tables that do not exist yet.
+
+**Plain SQL instead of dbt (for now).** Five models run in order. If the graph grows, they port directly to dbt-duckdb, and the checks map to dbt tests.
 
 ## Data quirks found in the source
 
 | Quirk | Handling |
 | --- | --- |
-| v2 endpoint (`FimaNfipClaims`) retired 2026-10-15; v3 renamed to `NfipClaims` | Pipeline targets v3; `discover` command checks the catalog before adding datasets |
-| `originalConstructionDate` = 1492-10-12 used as an "unknown" placeholder | Parsed at microsecond precision so it survives; nulled in silver with `construction_date_is_sentinel` flag |
-| `amountPaidOn*` is null on claims closed without payment, while `net*PaymentAmount` is 0 | `paid_*` columns coalesce to 0 |
-| `nfipCommunityNumberCurrent` is often null on older claims | Gold uses `nfipRatedCommunityNumber`, the community the policy was rated in |
-| Community numbers and county codes have leading zeros | Stored as strings |
-| `crsClassCode` can differ across claims in the same community and year | Gold records the modal class and `n_distinct_crs_classes`; a warn-level check counts these |
+| Claims v2 (`FimaNfipClaims`) and policies v2 retired 2026-10-15; v3 drops the FIMA prefix | Pipeline targets v3; `discover` checks the catalog before adding datasets |
+| Policies start in 2009; claims go back to 1978 | Panel starts 2009; 2009 is warm-up because policies written in 2008 are missing |
+| No key links a claim to a policy | Both are aggregated to community-year before joining |
+| Policies use `propertyState`; claims use `state` | Mapped separately in each silver model |
+| `originalConstructionDate` = 1492-10-12 as an "unknown" placeholder | Parsed at microsecond precision; nulled in silver with a flag |
+| `amountPaidOn*` is null on claims closed without payment | `paid_*` columns coalesce to 0 |
+| `nfipCommunityNumberCurrent` often null on older records | Community key is `nfipRatedCommunityNumber` on both sides |
+| Status Book map dates arrive as `MM/DD/YY` strings | Kept as strings; only CRS dates are parsed |
+| Coordinates truncated to one decimal place | Geography comes from community ID and county FIPS only |
 
 ## Known limitations
 
-- **Gold is claims only, not a loss rate.** Claims per policy needs exposure from the policies dataset, which is the next ingestion target. Community-years with zero claims are also absent until exposure is joined.
-- **CRS history is inferred from claims.** A community's class is only visible in years it had claims. The complete history should come from FEMA's published CRS community lists.
-- **`$count` reconciliation assumes the count is stable during a pull.** If FEMA refreshes mid-run, the load fails as a count mismatch and the previous partition is kept, which is the intended failure mode.
+- Status Book is a current snapshot: communities that left CRS may show no entry date. Class history comes from policies instead.
+- A community spanning counties is assigned its exposure-weighted modal county.
+- `$count` reconciliation assumes the count is stable during a pull; a refresh mid-run fails as a count mismatch and the previous partition is kept.

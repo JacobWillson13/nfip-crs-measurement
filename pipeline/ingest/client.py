@@ -64,9 +64,9 @@ class OpenFemaClient:
         data = self._get("v1/OpenFemaDataSets", {"$filter": flt})
         return data.get("OpenFemaDataSets", [])
 
-    def count(self, entity: str, version: int, filter_: str | None = None) -> int:
+    def count(self, entity: str, version: int, filter_: str | None = None, key_field: str = "id") -> int:
         """Server-side record count for a filter. This is the reconciliation target."""
-        params = {"$top": 1, "$select": "id", "$count": "true"}
+        params = {"$top": 1, "$select": key_field, "$count": "true"}
         if filter_:
             params["$filter"] = filter_
         data = self._get(f"v{version}/{entity}", params)
@@ -80,7 +80,7 @@ class OpenFemaClient:
         select: list[str] | None = None,
         orderby: str = "id",
     ) -> Iterator[list[dict]]:
-        """Yield pages of records. Ordering by id keeps $skip paging stable."""
+        """Yield pages of records. Ordering by a unique key keeps $skip paging stable."""
         skip = 0
         while True:
             params: dict = {"$top": self.page_size, "$skip": skip, "$orderby": orderby}

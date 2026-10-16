@@ -8,16 +8,36 @@ api:
   backoff_seconds: 2      # exponential: 2, 4, 8, 16
   timeout_seconds: 120
 
+duckdb:
+  memory_limit: 8GB       # lower this on a 16 GB machine if other things are running
+  threads: 4
+  temp_directory: data/tmp   # spill location for the policies aggregation
+
+panel:
+  year_min: 2009          # policy records start in 2009; 2009 exposure is partial (warm-up only)
+  year_max: null          # null = current year
+
 datasets:
   nfip_claims:
     entity: NfipClaims    # v3; v2 (FimaNfipClaims) was retired 2026-10-15
     version: 3
+    source: api
     partition_field: state
     enabled: true
-  # Next: exposure for loss rates. Confirm the entity name and version first with
-  #   python -m pipeline.cli discover NfipPolicies
-  # then add it here with a matching schema in pipeline/ingest/schema.py.
 
-# Pilot scope: Atlantic coast states with active CRS participation and
-# moderate claim volumes. Widen once the pipeline is stable.
-states: [NC, SC, VA]
+  nfip_community_status_book:
+    entity: NfipCommunityStatusBook   # CRS entry date and current class per community
+    version: 1
+    source: api
+    key_field: communityIdNumber
+    enabled: true
+
+  nfip_policies:
+    entity: NfipPolicies  # about 75M rows: bulk Parquet, not the API
+    version: 3
+    source: bulk
+    url: https://www.fema.gov/about/reports-and-data/openfema/v3/NfipPoliciesV3.parquet
+    enabled: true
+
+# "all" = 50 states, DC, and NFIP territories. Or a list, e.g. [NC, SC, VA].
+states: all

@@ -1,3 +1,4 @@
+-- requires: nfip_claims
 -- Silver: one row per claim, renamed to snake_case, typed, with known source quirks handled.
 -- Source quirks handled here (see ARCHITECTURE.md, "Data quirks"):
 --   * originalConstructionDate uses 1492-10-12 as an "unknown" sentinel -> null + flag

@@ -1,6 +1,6 @@
 # Test Plan
 
-Automated tests run with `pytest -q` and need no network: a fake OpenFEMA server in `tests/conftest.py` serves real v3 claim records from `tests/fixtures/nfip_claims_sample.json` and mimics filtering, paging, `$select`, `$count`, and error responses.
+Automated tests run with `pytest -q` and need no network. A fake OpenFEMA server in `tests/conftest.py` mimics filtering, paging, `$select`, `$orderby`, `$count`, and error responses. Claims fixtures are real v3 records; Status Book and policy fixtures are synthetic, built on the same community IDs so joins are tested end to end, with expected exposure worked out by hand.
 
 ## Ingestion
 
@@ -38,9 +38,36 @@ Automated tests run with `pytest -q` and need no network: a fake OpenFEMA server
 | T-5 | Clean load | All error-level checks pass; sentinel warning surfaced | `test_all_blocking_checks_pass` |
 | T-6 | Rows dropped between bronze and silver | Reconciliation check fails the run | `test_reconciliation_catches_dropped_rows` |
 
+## Bulk policies file
+
+| ID | Case | Expected | Test |
+| --- | --- | --- | --- |
+| B-1 | Valid file | Moved into bronze, manifest with row count and sha256, run logged | `test_register_promotes_file_with_manifest` |
+| B-2 | Same file registered again | Skipped by hash | `test_reregistering_same_file_is_skipped` |
+| B-3 | File and catalog counts differ | Recorded in run log, not blocking | `test_catalog_count_mismatch_is_recorded_not_blocking` |
+| B-4 | Required column missing | Rejected with column list; run logged as failed | `test_missing_required_column_is_rejected` |
+| B-5 | fema.gov blocks scripted download | Clear error with browser fallback command | `test_blocked_download_explains_browser_fallback` |
+
+## Exposure and panel
+
+| ID | Case | Expected | Test |
+| --- | --- | --- | --- |
+| E-1 | Policy spanning two calendar years | Exposure, premium, coverage split by days (leap year handled) | `test_policy_split_across_calendar_years` |
+| E-2 | Early cancellation and policyCount > 1 | Exposure truncated at cancellation, multiplied by count | `test_cancellation_and_policy_count` |
+| E-3 | Reversed term dates, missing community | Excluded | `test_bad_terms_and_missing_community_are_excluded` |
+| E-4 | Community-year with no claims | Present with zero claims and zero loss cost | `test_panel_has_zero_claim_years` |
+| E-5 | Houston 2017 | Loss cost = hand-computed paid / earned policy-years; CRS class 5, 25% discount | `test_panel_loss_metrics` |
+| E-6 | Null CRS class on policies | Treated as Class 10, not in CRS | `test_null_policy_crs_class_means_class_10` |
+| E-7 | County-year key for fixed effects | `county_fips-year` | `test_county_year_key` |
+| E-8 | Status Book parsing | Entry year, class, discount percent parsed | `test_status_book_silver` |
+| E-9 | Full build | All error-level checks pass, including join fan-out reconciliation | `test_checks_pass_on_full_build` |
+| E-10 | Feasibility report | Gate tables printed and written to CSV | `test_feasibility_report_writes_csvs` |
+| E-11 | Policies not loaded yet | Exposure and panel models skipped, claims still built | `test_build_skips_models_whose_inputs_are_missing` |
+
 ## Manual checks on first live run
 
-1. Run `python -m pipeline.cli discover NfipClaims` and confirm v3 is current and not deprecated.
-2. Run `python -m pipeline.cli run --states VA` and confirm `ops.run_log` shows `success` with expected and landed rows equal.
-3. Compare the VA claim count against the record count shown on FEMA's dataset page filtered to Virginia.
-4. Review `select * from ops.dq_results where not passed` and record warn-level counts as the baseline.
+1. `python -m pipeline.cli discover NfipClaims` and `discover NfipPolicies`: confirm v3 is current and not deprecated.
+2. After `ingest`: `ops.run_log` shows `success` for every state with expected and landed rows equal.
+3. After `register`: row count in the manifest is close to the catalog's 74.7M.
+4. After `report` (Gate 1): national earned policy-years are roughly 5 million per year in the 2010s, with no unexplained jumps; claim rates spike in 2012 and 2017.
+5. Review `select * from ops.dq_results where not passed`; record warn-level counts, especially `paid_claims_without_exposure`, as the baseline.

@@ -1,7 +1,7 @@
 [project]
 name = "nfip-crs-measurement"
-version = "0.1.0"
-description = "OpenFEMA NFIP claims pipeline and community-year panel for evaluating FEMA's Community Rating System"
+version = "0.2.0"
+description = "OpenFEMA NFIP pipeline: claims, policies, and CRS status into a national community-year panel"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.1",

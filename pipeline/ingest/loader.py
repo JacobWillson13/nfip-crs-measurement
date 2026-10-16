@@ -72,14 +72,16 @@ def load_partition(
     client: OpenFemaClient,
     con: duckdb.DuckDBPyConnection,
     ds: DatasetConfig,
-    partition_value: str,
+    partition_value: str | None,
     lake_root: Path,
     force: bool = False,
     run_id: str | None = None,
 ) -> LoadResult:
+    """Load one partition. Pass partition_value=None for unpartitioned datasets."""
     run_id = run_id or uuid.uuid4().hex[:12]
     started_at = _now()
-    key = f"{ds.partition_field}={partition_value}"
+    partitioned = ds.partition_field is not None and partition_value is not None
+    key = f"{ds.partition_field}={partition_value}" if partitioned else "all"
     fields = SCHEMAS[ds.key]
 
     source_refresh = _source_refresh(client, ds)
@@ -94,11 +96,12 @@ def load_partition(
     final = table_root / key
     staging.mkdir(parents=True, exist_ok=True)
 
-    filter_ = f"{ds.partition_field} eq '{partition_value}'"
+    filter_ = f"{ds.partition_field} eq '{partition_value}'" if partitioned else None
     try:
-        expected = client.count(ds.entity, ds.version, filter_)
+        expected = client.count(ds.entity, ds.version, filter_, key_field=ds.key_field)
         landed = 0
-        for i, page in enumerate(client.iter_pages(ds.entity, ds.version, filter_, list(fields))):
+        pages = client.iter_pages(ds.entity, ds.version, filter_, list(fields), orderby=ds.key_field)
+        for i, page in enumerate(pages):
             if i == 0:
                 check_fields_present(page, fields)
             table = to_arrow(page, fields)

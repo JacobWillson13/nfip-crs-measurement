@@ -67,7 +67,53 @@ NFIP_CLAIMS_FIELDS: dict[str, str] = {
     "rateMethod": "string",
 }
 
-SCHEMAS: dict[str, dict[str, str]] = {"nfip_claims": NFIP_CLAIMS_FIELDS}
+# Community Status Book v1. Map and program dates arrive as "MM/DD/YY" strings,
+# so they stay strings in bronze.
+NFIP_COMMUNITY_STATUS_BOOK_FIELDS: dict[str, str] = {
+    "communityIdNumber": "string",
+    "communityName": "string",
+    "county": "string",
+    "state": "string",
+    "tribal": "bool",
+    "participatingInNFIP": "bool",
+    "initialFloodHazardBoundaryMap": "timestamp",
+    "initialFloodInsuranceRateMap": "timestamp",
+    "currentlyEffectiveMapDate": "string",
+    "regularEmergencyProgramDate": "string",
+    "originalEntryDate": "timestamp",
+    "classRatingEffectiveDate": "timestamp",
+    "classRating": "int64",
+    "sfhaDiscount": "string",
+    "nonSfhaDiscount": "string",
+    "sanction": "bool",
+    "sanctionDate": "string",
+    "lastRefresh": "timestamp",
+}
+
+SCHEMAS: dict[str, dict[str, str]] = {
+    "nfip_claims": NFIP_CLAIMS_FIELDS,
+    "nfip_community_status_book": NFIP_COMMUNITY_STATUS_BOOK_FIELDS,
+}
+
+# Policies arrive as FEMA's bulk Parquet file, kept untouched in bronze. The contract
+# is enforced at registration: these columns must exist or the load is rejected.
+NFIP_POLICIES_REQUIRED_COLUMNS: list[str] = [
+    "id",
+    "propertyState",
+    "nfipRatedCommunityNumber",
+    "censusGeoid",
+    "policyEffectiveDate",
+    "policyTerminationDate",
+    "cancellationDateOfFloodPolicy",
+    "policyCount",
+    "crsClassCode",
+    "ratedFloodZone",
+    "totalBuildingInsuranceCoverage",
+    "totalContentsInsuranceCoverage",
+    "totalInsurancePremiumOfThePolicy",
+]
+
+BULK_REQUIRED_COLUMNS: dict[str, list[str]] = {"nfip_policies": NFIP_POLICIES_REQUIRED_COLUMNS}
 
 
 def arrow_schema(fields: dict[str, str]) -> pa.Schema:

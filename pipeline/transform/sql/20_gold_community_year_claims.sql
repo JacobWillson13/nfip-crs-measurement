@@ -1,7 +1,7 @@
--- Gold: community-year claims panel, the handoff table for the measurement analysis.
--- Grain: one row per (community_id, year_of_loss) with at least one claim.
--- NOT yet a loss rate: exposure (policies in force) joins in once the policies
--- dataset is ingested. Communities with zero claims in a year are absent here.
+-- requires: silver_nfip_claims
+-- Gold: claims aggregated by community and year of loss, over the full claims history
+-- (1978 onward). Grain: one row per (community_id, year_of_loss) with at least one claim.
+-- Not a loss rate on its own; gold.community_year_panel adds exposure from 2009 onward.
 create schema if not exists gold;
 
 create or replace table gold.community_year_claims as
