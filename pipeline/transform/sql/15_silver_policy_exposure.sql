@@ -72,9 +72,10 @@ with totals as (
         sum(earned_coverage)                                             as earned_coverage,
         sum(earned_premium)                                              as earned_premium,
         sum(n_policy_records)                                            as n_policy_records,
-        sum(earned_policy_years) filter (where in_sfha)
+        -- coalesce: a filtered sum over zero rows is NULL, which would read as "unknown"
+        coalesce(sum(earned_policy_years) filter (where in_sfha), 0)
           / nullif(sum(earned_policy_years), 0)                          as share_exposure_sfha,
-        sum(earned_policy_years) filter (where crs_class is null)
+        coalesce(sum(earned_policy_years) filter (where crs_class is null), 0)
           / nullif(sum(earned_policy_years), 0)                          as share_exposure_crs_null
     from _exposure_pieces
     group by community_id, year

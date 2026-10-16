@@ -35,17 +35,30 @@ QUERIES: dict[str, tuple[str, str]] = {
         where crs_entry_year is not null
         group by 1 order by 1
     """),
-    "gate2_class_changes_by_year": ("gold.community_year_panel", """
-        with p as (
-            select community_id, year, crs_class,
-                   lag(crs_class) over (partition by community_id order by year) as prev_class
-            from gold.community_year_panel
-        )
+    "gate2_policy_stamp_variation": ("gold.community_year_panel", """
+        -- If policies carried historical CRS classes, many communities would change class.
+        select count(*)                                 as communities,
+               count(*) filter (where n_stamped_classes > 1) as communities_with_stamp_change
+        from (select community_id, count(distinct crs_class_policy_stamp) as n_stamped_classes
+              from gold.community_year_panel group by 1)
+    """),
+    "gate2_crs_history_coverage": ("gold.community_year_panel", """
         select year,
-               count(*) filter (where prev_class is not null and crs_class < prev_class) as upgrades,
-               count(*) filter (where prev_class is not null and crs_class > prev_class) as downgrades,
-               count(*) filter (where prev_class = 10 and crs_class < 10)               as entries_seen_in_policies
-        from p where year >= 2010 group by year order by year
+               count(*) filter (where crs_status_basis = 'not_in_crs')            as not_in_crs,
+               count(*) filter (where crs_status_basis = 'current_class')         as crs_class_known,
+               count(*) filter (where crs_status_basis = 'in_crs_class_unknown')  as crs_class_unknown,
+               count(*) filter (where crs_status_basis = 'participation_unknown') as participation_unknown
+        from gold.community_year_panel group by year order by year
+    """),
+    "gate2_claims_crs_variation": ("gold.community_year_claims", """
+        -- Do claims carry the class at time of loss? If so, class history can be
+        -- reconstructed for flood years from claims.
+        select count(*)                                       as communities_with_crs_on_claims,
+               count(*) filter (where n_classes > 1)          as communities_with_class_change
+        from (select community_id, count(distinct crs_class_modal) as n_classes
+              from gold.community_year_claims
+              where crs_class_modal is not null and year_of_loss >= 1995
+              group by 1)
     """),
     "gate2_mixed_county_years": ("gold.community_year_panel", """
         with c as (

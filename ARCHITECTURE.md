@@ -35,7 +35,7 @@ Everything runs locally on DuckDB and Parquet. The layers map one to one onto a 
 
 **Exposure is the panel spine.** The panel starts from community-years with earned exposure and left-joins claims, so years with no claims appear as zeros. A claims-only panel silently drops good years, which biases every rate upward.
 
-**CRS class by year from policies, entry date from the Status Book.** The Status Book only holds each community's current class. Policies carry `crsClassCode` on every transaction, so the exposure-weighted modal class per community-year gives a full class history from 2009. Null class on policies is treated as Class 10 (no discount); the share of exposure with null class is kept on the panel so that assumption can be checked.
+**CRS history rebuilt from Status Book dates, not policies.** The original design took class by year from `crsClassCode` on policies. The first national load showed that field is today's class stamped onto every historical record: no community ever changed class across 18 years, and 91% of community-years before a community joined CRS were stamped as CRS. History now comes from the Status Book: not in CRS before the entry date, the current class from its effective date onward, and explicitly unknown in between. Every panel row carries `crs_status_basis` saying which rule applied, and the policy stamp is kept as `crs_class_policy_stamp` so the discrepancy stays visible. Dates count toward a year only if they take effect by about mid-year, since ratings change on April 1 or October 1.
 
 **Streaming aggregation for policies.** The exposure model parses, splits, and aggregates in one pass and never materializes the 75M-row grain. Benchmarked at 10M synthetic rows in 14 seconds on 2 cores with a 3 GB memory cap; DuckDB spills to `data/tmp` if needed.
 
@@ -59,6 +59,9 @@ Everything runs locally on DuckDB and Parquet. The layers map one to one onto a 
 | Policies start in 2009; claims go back to 1978 | Panel starts 2009; 2009 is warm-up because policies written in 2008 are missing |
 | No key links a claim to a policy | Both are aggregated to community-year before joining |
 | Policies use `propertyState`; claims use `state` | Mapped separately in each silver model |
+| Policy `crsClassCode` is the community's current class, back-stamped onto 2009+ records | Not used for history; rebuilt from Status Book entry and effective dates |
+| 125 claims have negative paid amounts (adjustments and recoveries, net -$86k) | Kept; warn-level check |
+| Filtered sums over zero rows return NULL in SQL, so shares read as unknown instead of 0 | Coalesced to 0 (caught on first load) |
 | `originalConstructionDate` = 1492-10-12 as an "unknown" placeholder | Parsed at microsecond precision; nulled in silver with a flag |
 | `amountPaidOn*` is null on claims closed without payment | `paid_*` columns coalesce to 0 |
 | `nfipCommunityNumberCurrent` often null on older records | Community key is `nfipRatedCommunityNumber` on both sides |
@@ -67,6 +70,7 @@ Everything runs locally on DuckDB and Parquet. The layers map one to one onto a 
 
 ## Known limitations
 
-- Status Book is a current snapshot: communities that left CRS may show no entry date. Class history comes from policies instead.
+- Status Book is a current snapshot. A community's class between CRS entry and its current class's effective date is unknown, and communities that entered then left CRS are marked `participation_unknown` after entry.
+- Claims from the most recent year or two are still developing, so loss cost in those years is understated.
 - A community spanning counties is assigned its exposure-weighted modal county.
 - `$count` reconciliation assumes the count is stable during a pull; a refresh mid-run fails as a count mismatch and the previous partition is kept.

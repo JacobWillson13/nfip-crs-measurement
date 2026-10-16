@@ -11,12 +11,12 @@ from tests.conftest import FakeResponse, write_policies_parquet
 
 def test_register_promotes_file_with_manifest(con, policies_ds, tmp_path):
     src = write_policies_parquet(tmp_path / "downloads" / "NfipPoliciesV3.parquet")
-    res = register(con, policies_ds, src, tmp_path / "lake", expected_rows=7)
-    assert res.status == "success" and res.landed_rows == 7 and not res.message
+    res = register(con, policies_ds, src, tmp_path / "lake", expected_rows=9)
+    assert res.status == "success" and res.landed_rows == 9 and not res.message
     target = tmp_path / "lake" / "bronze" / "nfip_policies" / "NfipPoliciesV3.parquet"
     assert target.exists() and not src.exists()   # moved, not copied
     manifest = json.loads((target.parent / "_manifest.json").read_text())
-    assert manifest["rows"] == 7 and len(manifest["sha256"]) == 64
+    assert manifest["rows"] == 9 and len(manifest["sha256"]) == 64
 
 
 def test_reregistering_same_file_is_skipped(con, policies_ds, tmp_path):
@@ -29,8 +29,8 @@ def test_reregistering_same_file_is_skipped(con, policies_ds, tmp_path):
 
 def test_catalog_count_mismatch_is_recorded_not_blocking(con, policies_ds, tmp_path):
     src = write_policies_parquet(tmp_path / "downloads" / "NfipPoliciesV3.parquet")
-    res = register(con, policies_ds, src, tmp_path / "lake", expected_rows=8)
-    assert res.status == "success" and "catalog reports 8" in res.message
+    res = register(con, policies_ds, src, tmp_path / "lake", expected_rows=10)
+    assert res.status == "success" and "catalog reports 10" in res.message
 
 
 def test_missing_required_column_is_rejected(con, policies_ds, tmp_path):

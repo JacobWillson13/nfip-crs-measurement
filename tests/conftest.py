@@ -138,6 +138,10 @@ POLICY_ROWS = [
     (5, "VA", "515529", "517402130023", "2009-06-01", "2010-06-01", None, 1, None, "X", 250000, 0, 365),
     (6, "VA", "515529", "517402130023", "2012-05-01", "2011-05-01", None, 1, None, "X", 1, 0, 1),  # bad term
     (7, "VA", None, "517402130023", "2012-01-01", "2013-01-01", None, 1, None, "X", 1, 0, 1),     # no community
+    # Pasadena entered CRS in 2012; its current Class 7 took effect 2016-10-01 (counts from 2017).
+    # FEMA stamps today's class (7) on every year, so both rows below carry 7 on the policy.
+    (8, "TX", "480307", "482013430001", "2011-01-01", "2012-01-01", None, 1, 7, "X", 53000, 15000, 500),
+    (9, "TX", "480307", "482013430001", "2014-01-01", "2015-01-01", None, 1, 7, "X", 53000, 15000, 550),
 ]
 
 

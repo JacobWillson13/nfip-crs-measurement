@@ -73,6 +73,30 @@ def test_null_policy_crs_class_means_class_10(built):
     assert (crs, in_crs, disc) == (10, False, 0)
 
 
+def test_crs_history_rebuilt_from_status_book(built):
+    rows = {r[0]: r[1:] for r in built.execute("""
+        select year, in_crs, crs_class, crs_status_basis, crs_class_policy_stamp
+        from gold.community_year_panel where community_id = '480307' order by year
+    """).fetchall()}
+    assert rows[2011] == (False, 10, "not_in_crs", 7)              # before entry, despite the policy stamp
+    assert rows[2014] == (True, None, "in_crs_class_unknown", 7)   # in CRS, class before 2017 unknown
+    assert rows[2017] == (True, 7, "current_class", 7)
+
+
+def test_effective_dates_count_from_mid_year(built):
+    entry, eff = built.execute(
+        "select crs_entry_panel_year, crs_class_effective_panel_year from gold.community_year_panel "
+        "where community_id = '480307' limit 1").fetchone()
+    assert (entry, eff) == (2012, 2017)   # May 1 counts that year; Oct 1 counts from the next
+
+
+def test_shares_are_zero_not_null_when_absent(built):
+    sfha, crs_null = built.execute(
+        "select share_exposure_sfha, share_exposure_crs_null from silver.policy_exposure_community_year "
+        "where community_id = '480307' and year = 2017").fetchone()
+    assert (sfha, crs_null) == (0, 0)
+
+
 def test_county_year_key(built):
     key = built.execute("select county_year from gold.community_year_panel "
                         "where community_id = '480307' and year = 2017").fetchone()[0]
@@ -88,6 +112,8 @@ def test_status_book_silver(built):
 def test_checks_pass_on_full_build(built):
     results = run_checks(built)
     assert not has_blocking_failure(results), [r for r in results if not r["passed"]]
+    stamp = next(r for r in results if r["check"] == "policy_crs_stamp_disagrees_with_history")
+    assert stamp["failing_rows"] == 1   # Pasadena 2011: stamped 7, actually not yet in CRS
     names = {r["check"] for r in results}
     assert {"panel_join_no_fanout", "exposure_grain_unique", "status_book_community_unique"} <= names
 

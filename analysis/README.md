@@ -13,15 +13,15 @@ Are CRS discounts in line with the loss reduction they buy? Secondary: does a on
 - **Primary outcome:** loss cost, paid claims per earned policy-year.
 - **Secondary outcomes:** claims per 1,000 policy-years (frequency), paid per paid claim (severity), paid per $1,000 of coverage.
 - **Not a primary outcome:** loss ratio. Premiums already include the CRS discount, so CRS communities show higher loss ratios mechanically.
-- **Treatment:** CRS class by year from policies (1 to 9; 10 = no discount). Entry date from the Status Book.
+- **Treatment:** CRS participation and class by year, rebuilt from Status Book entry and effective dates (`crs_status_basis` on the panel). Policies cannot be used: their CRS class is today's class back-stamped onto history.
 
 ## Analyses
 
 **A. Pricing adequacy.** Loss cost by CRS class relative to Class 10, adjusted for SFHA share and county-by-year fixed effects, compared against the discount schedule (5 points per class). Benchmark: Gourevitch and Pinter found reductions roughly matching discounts nationally.
 
-**C. Class-step effect (main causal estimate).** Pooled within-community model: loss cost on CRS class with community fixed effects and county-by-year fixed effects. One slope, "change in loss cost per class step," identified from communities that changed class while neighbors in the same county and year did not.
+**B. Entry event study (main causal estimate).** About 465 communities entered CRS between 2011 and 2020, and 424 of them share a county with never-CRS communities. Callaway and Sant'Anna estimator with never-CRS communities in the same county as controls. A first raw look shows entrants had roughly twice the loss cost of same-county controls in the two years before entry, which is the flood-driven entry pattern. The design has to account for it: match or condition on pre-entry losses, and report the pre-trend.
 
-**B. Entry event study (robustness).** Callaway and Sant'Anna estimator on post-2010 CRS entrants. Expected to show a pre-trend: communities tend to join after bad flood years, so their claims fall afterward regardless (regression to the mean). Shown as a finding, not hidden.
+**C. Class-step effect (pending).** Policies cannot supply class history. Whether claims carry the class at time of loss is checked in the feasibility report (`gate2_claims_crs_variation`). If they do, C is estimated on flood years only; if not, C is dropped and A carries the class question.
 
 ## Why county-by-year fixed effects
 

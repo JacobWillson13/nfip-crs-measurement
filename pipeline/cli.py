@@ -126,11 +126,13 @@ def cmd_export(cfg) -> int:
     con = _connect(cfg)
     out = REPO_ROOT / "data" / "export"
     out.mkdir(parents=True, exist_ok=True)
-    target = out / "community_year_panel.parquet"
-    con.execute(f"copy gold.community_year_panel to '{target.as_posix()}' (format parquet, compression zstd)")
-    rows = con.execute("select count(*) from gold.community_year_panel").fetchone()[0]
+    tables = ["gold.community_year_panel", "gold.community_year_claims", "silver.community_status"]
+    for table in tables:
+        target = out / f"{table.split('.', 1)[1]}.parquet"
+        con.execute(f"copy {table} to '{target.as_posix()}' (format parquet, compression zstd)")
+        rows = con.execute(f"select count(*) from {table}").fetchone()[0]
+        print(f"Wrote {rows:,} rows to {target} ({target.stat().st_size / 1e6:.1f} MB)")
     con.close()
-    print(f"Wrote {rows:,} rows to {target} ({target.stat().st_size / 1e6:.1f} MB)")
     return 0
 
 

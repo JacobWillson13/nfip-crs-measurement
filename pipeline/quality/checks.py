@@ -33,7 +33,9 @@ CHECKS: list[Check] = [
           "select count(*) from (select claim_id from silver.nfip_claims group by 1 having count(*) > 1)"),
     Check("state_is_two_letters", "silver", "error",
           "select count(*) from silver.nfip_claims where state is null or length(state) <> 2"),
-    Check("paid_amounts_non_negative", "silver", "error",
+    # Negative paid amounts are post-payment adjustments and recoveries (125 claims on the
+    # first national load, net -$86k). Real, so kept; surfaced as a warning.
+    Check("paid_amounts_negative_adjustments", "silver", "warn",
           "select count(*) from silver.nfip_claims where paid_building < 0 or paid_contents < 0 or paid_icc < 0"),
     Check("year_of_loss_in_range", "silver", "error",
           "select count(*) from silver.nfip_claims "
@@ -107,7 +109,16 @@ CHECKS: list[Check] = [
           "select count(*) from (select community_id, year from gold.community_year_panel "
           "group by 1, 2 having count(*) > 1)"),
     Check("panel_crs_class_in_domain", "gold", "error",
-          "select count(*) from gold.community_year_panel where crs_class not between 1 and 10"),
+          "select count(*) from gold.community_year_panel "
+          "where crs_class is not null and crs_class not between 1 and 10"),
+    Check("panel_crs_status_basis_valid", "gold", "error",
+          "select count(*) from gold.community_year_panel where crs_status_basis not in "
+          "('not_in_crs', 'current_class', 'in_crs_class_unknown', 'participation_unknown')"),
+    # Policies carry today's CRS class on historical records; this counts known
+    # community-years where that stamp disagrees with the rebuilt history.
+    Check("policy_crs_stamp_disagrees_with_history", "gold", "warn",
+          "select count(*) from gold.community_year_panel "
+          "where crs_class is not null and crs_class <> crs_class_policy_stamp"),
     Check("panel_join_no_fanout", "reconciliation", "error", """
         select case when abs(
             (select coalesce(sum(paid_total), 0) from gold.community_year_panel)
