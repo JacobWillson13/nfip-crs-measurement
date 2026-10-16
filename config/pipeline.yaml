@@ -1,0 +1,23 @@
+# Pipeline settings. Paths are relative to the repo root.
+lake_root: data/lake
+warehouse: data/warehouse.duckdb
+
+api:
+  page_size: 10000        # OpenFEMA per-request maximum
+  max_retries: 5
+  backoff_seconds: 2      # exponential: 2, 4, 8, 16
+  timeout_seconds: 120
+
+datasets:
+  nfip_claims:
+    entity: NfipClaims    # v3; v2 (FimaNfipClaims) was retired 2026-10-15
+    version: 3
+    partition_field: state
+    enabled: true
+  # Next: exposure for loss rates. Confirm the entity name and version first with
+  #   python -m pipeline.cli discover NfipPolicies
+  # then add it here with a matching schema in pipeline/ingest/schema.py.
+
+# Pilot scope: Atlantic coast states with active CRS participation and
+# moderate claim volumes. Widen once the pipeline is stable.
+states: [NC, SC, VA]
