@@ -2,10 +2,14 @@
 
 **Business question:** FEMA's Community Rating System (CRS) gives flood insurance discounts of 5% to 45% to communities that invest in floodplain management. Are those discounts in line with the loss reduction they actually buy, and how confident can we be?
 
+**Answer so far:** within the same county and year, each CRS class step is associated with about 6% lower loss cost (95% CI: 0.2% to 11%) and 5% fewer claims per policy-year (2% to 8%), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured precisely with public data (CI: 57% lower to 81% higher). Details in [analysis/RESULTS.md](analysis/RESULTS.md).
+
+**Data finding:** FEMA's redacted policies and claims stamp each community's *current* CRS class onto every historical record. The pipeline's feasibility gates caught this on the first national load, and CRS history is rebuilt from Community Status Book dates instead. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
 This repo has two halves:
 
 1. **A data pipeline** that pulls National Flood Insurance Program (NFIP) claims, policies, and community CRS status from OpenFEMA, turns about 75 million policy transactions into earned exposure, validates and reconciles every load, and builds a national community-year panel in DuckDB.
-2. **A measurement analysis** on that panel: loss cost by CRS class against the discount schedule, a pooled class-step model with county-by-year fixed effects, and an entry event study. *In progress; see [analysis/](analysis/).*
+2. **A measurement analysis** on that panel: loss cost by CRS class against the discount schedule, with county-by-year fixed effects, and a stacked difference-in-differences on CRS entry. See [analysis/RESULTS.md](analysis/RESULTS.md).
 
 ## Where to start
 
@@ -20,7 +24,7 @@ Needs Linux or macOS, Python 3.11+, about 15 GB free disk, 16 GB RAM recommended
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,analysis]"
-pytest -q                                          # 39 tests, no network needed
+pytest -q                                          # 42 tests, no network needed
 
 # 1. API sources: national claims (about 273 API pages) and the Community Status Book
 python -m pipeline.cli ingest
@@ -39,6 +43,9 @@ python -m pipeline.cli quality
 # 4. Feasibility gates 1 and 2, and the shareable panel
 python -m pipeline.cli report
 python -m pipeline.cli export      # writes data/export/community_year_panel.parquet
+
+# 5. Analyses A and B (about 10 seconds)
+python analysis/run_analysis.py data/export/community_year_panel.parquet
 ```
 
 Every step is idempotent. Re-running `ingest` skips sources FEMA has not refreshed; `--force` overrides.

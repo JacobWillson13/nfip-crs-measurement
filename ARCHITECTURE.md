@@ -59,7 +59,7 @@ Everything runs locally on DuckDB and Parquet. The layers map one to one onto a 
 | Policies start in 2009; claims go back to 1978 | Panel starts 2009; 2009 is warm-up because policies written in 2008 are missing |
 | No key links a claim to a policy | Both are aggregated to community-year before joining |
 | Policies use `propertyState`; claims use `state` | Mapped separately in each silver model |
-| Policy `crsClassCode` is the community's current class, back-stamped onto 2009+ records | Not used for history; rebuilt from Status Book entry and effective dates |
+| Policy and claims `crsClassCode` is the community's current class, back-stamped onto historical records (0 of 20,668 communities change class on policies; 0 of 1,667 on claims since 1995) | Not used for history; rebuilt from Status Book entry and effective dates |
 | 125 claims have negative paid amounts (adjustments and recoveries, net -$86k) | Kept; warn-level check |
 | Filtered sums over zero rows return NULL in SQL, so shares read as unknown instead of 0 | Coalesced to 0 (caught on first load) |
 | `originalConstructionDate` = 1492-10-12 as an "unknown" placeholder | Parsed at microsecond precision; nulled in silver with a flag |
