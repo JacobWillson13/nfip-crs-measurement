@@ -111,18 +111,39 @@ def build_stacks(df: pd.DataFrame, cohorts=range(2012, 2021), pre=3, post=4) -> 
     return st
 
 
+def collapse(st: pd.DataFrame) -> pd.DataFrame:
+    """Sum entrants and controls separately within each county, stack, and year.
+
+    Each county-stack-year then has one treated row and one control row, so county-by-year
+    fixed effects compare entrants only with never-CRS neighbors hit by the same storms.
+    (County-by-year FE on the community-level stack fail to converge in PPML: too many
+    small cells.) Group fixed effects (county x stack x treated) replace community FE."""
+    g = st.groupby(["county_fips", "cohort", "treated", "year"], as_index=False).agg(
+        paid_k=("paid_k", "sum"), n_claims=("n_claims", "sum"),
+        earned_policy_years=("earned_policy_years", "sum"), post=("post", "max"))
+    g["log_epy"] = np.log(g.earned_policy_years)
+    key = g.county_fips + "_" + g.cohort.astype(str)
+    g["grp"] = key + "_" + g.treated.astype(str)
+    g["cy"] = key + "_" + g.year.astype(str)
+    g["rel"] = np.where(g.treated == 1, g.year - g.cohort, -99)
+    return g
+
+
 def analysis_b(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     st = build_stacks(df)
+    cs = collapse(st)
     out = []
     for outcome, label in (("paid_k", "loss_cost"), ("n_claims", "claim_frequency")):
-        # Controls are never-CRS communities in the entrants' own counties; year FE are per stack.
-        # (Full county-by-year FE inside each stack leave too many one-community cells for PPML to converge.)
-        fit = ppml(f"{outcome} ~ post | unit + yr_stack", st, outcome, ["unit", "yr_stack"])
+        # Primary: within county and year (collapsed). Placebo tests in run_design.py show
+        # the year-FE-only version below is biased and its standard errors are too small.
+        fit = ppml(f"{outcome} ~ post | grp + cy", cs, outcome, ["grp", "cy"])
         out.append(tidy(fit, "post", f"B_{label}_post_entry"))
-        es = ppml(f"{outcome} ~ i(rel, ref=-1) | unit + yr_stack", st, outcome, ["unit", "yr_stack"])
+        es = ppml(f"{outcome} ~ i(rel, ref=-1) | grp + cy", cs, outcome, ["grp", "cy"])
         e = tidy(es, "rel", f"B_{label}_event_study")
-        e = e[~e.Coefficient.str.contains("-99")]
-        out.append(e)
+        out.append(e[~e.Coefficient.str.contains("-99")])
+        # Original design, kept for comparison: community FE and stack-by-year FE only.
+        fit = ppml(f"{outcome} ~ post | unit + yr_stack", st, outcome, ["unit", "yr_stack"])
+        out.append(tidy(fit, "post", f"B_{label}_post_entry_year_fe_only"))
     # Pre-entry losses relative to same-county controls, which drive the regression-to-the-mean concern.
     pre = st[(st.rel >= -3) & (st.rel <= -1) | (st.rel == -99) & (st.year < st.cohort)]
     fit = ppml("paid_k ~ treated | cy_stack", pre, "paid_k", ["cy_stack"])

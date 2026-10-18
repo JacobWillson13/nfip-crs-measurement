@@ -18,11 +18,11 @@ Exposure matches the published national picture: about 5.5 million policy-years 
 **3. The finding that changed the design (60 seconds)**
 My feasibility gates checked that CRS class actually varies over time before I used it. It didn't. No community ever changed class in 18 years, and 91% of community-years before a community joined CRS were already labeled CRS. FEMA stamps today's class onto every historical record, in both policies and claims. I rebuilt class history from the Community Status Book's entry and effective dates, and every row records which rule assigned its class. That killed one planned analysis, the effect of class upgrades, and I documented why instead of running it on bad data.
 
-**4. The result (60 seconds)**
-Comparing communities in the same county and year, so they faced the same storms, each CRS class step goes with about 6% lower loss cost (95% CI: 0.2% to 11%) and 5% fewer claims per policy-year (2% to 8%). The schedule is 5% per step, so discounts look priced about right on average. That holds when I drop catastrophe years or any of the four largest states, though Florida carries much of the precision. It's an association: communities that earn better classes also differ in capacity and income.
+**4. The result (45 seconds)**
+Comparing communities in the same county and year, so they faced the same storms, each CRS class step goes with about 5% fewer claims per policy-year and about 6% lower loss cost. The schedule is 5% per step, so discounts look priced about right on average. I checked the standard errors with a placebo test, reassigning classes at random within each county-year 200 times. They run about 20% too small. With placebo-calibrated intervals, the claims result holds (1.6% to 8.5% fewer, p = 0.005) and the loss-cost result becomes suggestive (p = 0.10). It's an association: communities that earn better classes also differ in capacity and income.
 
-**5. What I could not measure (30 seconds)**
-I also tried to measure the causal effect of joining CRS with a stacked difference-in-differences: 395 entrants against 2,307 never-CRS neighbors in the same counties. The estimate is -12%, but the interval runs from -57% to +81%, and the design could only detect effects over 64%. Flood losses are too lumpy for 400 entrants. I report that as the result rather than reaching for a significant number.
+**5. Testing the design before trusting it (60 seconds)**
+For the causal effect of joining CRS, I first ran a stacked difference-in-differences: 395 entrants against never-CRS neighbors in the same counties. The result was -12% with a wide interval, which looked like an honest null. Then I tested the design itself. I gave fake entry dates to communities that never joined and reran it 150 times. With no real effect, it produced an average of +41% and flagged a significant result 25% of the time instead of 5%. County storm shocks were leaking in through the year fixed effects. I rebuilt it to compare entrants and controls within the same county and year, which removed the bias and halved the noise. Even so, 395 entrants can only detect a 53% drop in claims. Detecting 20% would need 6,500 to 8,300 entrants, and only 1,777 communities have ever joined. So the answer is that public data can't measure this, and the simulation says exactly why.
 
 **6. Close (30 seconds)**
 If I had another week: recover historical CRS classes from FEMA's semiannual community lists, which would unlock the class-upgrade design, and add a Bayesian hierarchical model to stabilize the class-by-class estimates.
@@ -31,7 +31,7 @@ If I had another week: recover historical CRS classes from FEMA's semiannual com
 
 **Senior Data Engineer:** spend most of the time on sections 2 and 3. Open `ARCHITECTURE.md` and `pipeline/transform/sql/15_silver_policy_exposure.sql`, and show `ops.run_log` and `ops.dq_results`.
 
-**Measurement Science:** spend most of the time on sections 3 to 5. Open `analysis/RESULTS.md`.
+**Measurement Science:** spend most of the time on sections 3 to 5. Open `analysis/RESULTS.md` at section C and show the figure.
 
 ## Likely questions
 
@@ -69,14 +69,27 @@ Premiums already include the CRS discount, so CRS communities show higher loss r
 *Is the 6% causal?*
 No. It's the right comparison for checking whether the discount schedule tracks observed losses, but better-rated communities differ in other ways. The causal design (B) was too underpowered to settle it.
 
+*How do you know your standard errors are right?*
+I don't assume it; I test it. For each design I simulate placebo treatments on the real data and check how often a fake effect comes out significant. For A, 9% to 11% instead of 5%, so I widen the intervals using the placebo's critical values. For the original B design, 25%, plus a bias, which is why I replaced it.
+
+*Why did the original DiD have a bias if the controls were in the same counties?*
+It used year fixed effects, not county-by-year. Counties contribute different ratios of entrants to controls, so a storm in one county moves the pooled entrant and control averages by different amounts. Summing entrants and controls within each county-year and adding county-by-year fixed effects removes that. Doing it at the community level didn't converge in PPML.
+
+*Why not Callaway and Sant'Anna?*
+The stacked design does the same job for staggered adoption: each cohort is compared only with never-treated units, so there are no forbidden comparisons with already-treated units. I also estimated cohort-level effects, but with 14 to 49 entrants per cohort they were pure noise (-79% to +980%), so I dropped them.
+
+*Did you try a predictive model?*
+Yes: a Tweedie GLM and LightGBM, trained on 2012 to 2019 and tested on 2022 to 2024. They ranked risk worse than a flat rate. 90% of the test losses were in Florida, mostly Hurricane Ian, versus 6% of training losses, so the state effects had learned that Florida was low risk. FEMA's Risk Rating 2.0 premium alone ranked those losses best (Gini 0.58). For flood, an out-of-time test mostly measures where the next hurricane lands, so I left the model out.
+
 *Why is Class 9 worse than non-CRS?*
 Class 9 is the entry tier, and communities tend to join after flooding. That fits selection, not CRS raising losses.
 
 *What's the minimum detectable effect for B, and what would fix it?*
-About 64% for loss cost. Fixes: more entrants (a longer window once history is recovered), a less volatile outcome such as claim frequency in non-catastrophe years, or pooling entry cohorts with a hierarchical model.
+From the placebo spread with 395 entrants: 53% for claim frequency and 79% for loss cost. More entrants help claims, roughly with the square root of the count, but barely help loss cost, because a few catastrophes dominate it. The realistic fixes are a longer history (recovering past CRS classes), a pooled hierarchical model, or an outcome less driven by catastrophes.
 
 ## Resume bullets
 
 - Built a national flood-insurance data pipeline (Python, SQL, DuckDB) that turns 75M FEMA policy transactions and 2.7M claims into an analysis-ready panel of 335K community-years, with row-count reconciliation, schema contracts, and 20+ automated quality checks
 - Caught a silent source-data defect through feasibility gates (historical CRS classes back-stamped onto 91% of pre-entry records) and rebuilt treatment history from a second source
-- Estimated that each FEMA CRS class step is associated with about 6% lower flood loss cost (95% CI 0.2% to 11%) against a 5% scheduled discount, using Poisson regression with county-by-year fixed effects; quantified a 64% minimum detectable effect for the entry design and reported it as underpowered
+- Estimated that each FEMA CRS class step is associated with about 5% fewer flood claims per policy-year (95% CI 1.6% to 8.5%, placebo-calibrated) against a 5% scheduled discount, using Poisson regression with county-by-year fixed effects
+- Used placebo simulation to show a difference-in-differences design had a +41% bias and a 25% false-positive rate, replaced it with a within-county design that removed the bias and halved the noise, and quantified the sample needed for a 20% effect (6,500+ entrants vs 1,777 available)

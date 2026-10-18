@@ -2,14 +2,14 @@
 
 **Business question:** FEMA's Community Rating System (CRS) gives flood insurance discounts of 5% to 45% to communities that invest in floodplain management. Are those discounts in line with the loss reduction they actually buy, and how confident can we be?
 
-**Answer so far:** within the same county and year, each CRS class step is associated with about 6% lower loss cost (95% CI: 0.2% to 11%) and 5% fewer claims per policy-year (2% to 8%), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured precisely with public data (CI: 57% lower to 81% higher). Details in [analysis/RESULTS.md](analysis/RESULTS.md).
+**Answer so far:** within the same county and year, each CRS class step is associated with about 5% fewer claims per policy-year (95% CI: 1.6% to 8.5%, placebo-calibrated) and about 6% lower loss cost (95% CI: 12.7% lower to 1.4% higher), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured with public data: placebo tests show even the best available design can only detect a drop of about 50% in claims. Details in [analysis/RESULTS.md](analysis/RESULTS.md).
 
 **Data finding:** FEMA's redacted policies and claims stamp each community's *current* CRS class onto every historical record. The pipeline's feasibility gates caught this on the first national load, and CRS history is rebuilt from Community Status Book dates instead. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 This repo has two halves:
 
 1. **A data pipeline** that pulls National Flood Insurance Program (NFIP) claims, policies, and community CRS status from OpenFEMA, turns about 75 million policy transactions into earned exposure, validates and reconciles every load, and builds a national community-year panel in DuckDB.
-2. **A measurement analysis** on that panel: loss cost by CRS class against the discount schedule, with county-by-year fixed effects, and a stacked difference-in-differences on CRS entry. See [analysis/RESULTS.md](analysis/RESULTS.md).
+2. **A measurement analysis** on that panel: loss cost by CRS class against the discount schedule, with county-by-year fixed effects; a within-county stacked difference-in-differences on CRS entry; and placebo simulations that measure each design's bias, false-positive rate, and power. See [analysis/RESULTS.md](analysis/RESULTS.md).
 
 ## Where to start
 
@@ -47,7 +47,8 @@ python -m pipeline.cli report
 python -m pipeline.cli export      # writes data/export/community_year_panel.parquet
 
 # 5. Analyses A and B (about 10 seconds)
-python analysis/run_analysis.py data/export/community_year_panel.parquet
+python analysis/run_analysis.py data/export/community_year_panel.parquet   # estimates, about 20 s
+python analysis/run_design.py data/export/community_year_panel.parquet     # placebo checks, about 25 min
 ```
 
 Every step is idempotent. Re-running `ingest` skips sources FEMA has not refreshed; `--force` overrides.
@@ -69,7 +70,7 @@ pipeline/transform/sql/       silver and gold models, run in order, each declare
 pipeline/quality/             quality and reconciliation checks, feasibility report
 pipeline/cli.py               ingest | download | register | transform | quality | report | export
 tests/                        unit and end-to-end tests against a fake API and synthetic policies
-analysis/                     measurement plan, gates, and notebooks
+analysis/                     measurement plan, estimates (run_analysis.py), placebo design checks (run_design.py)
 dashboard/                    Power BI report on the panel (CSV inputs in data/export/bi/)
 ```
 

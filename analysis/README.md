@@ -21,6 +21,8 @@ Are CRS discounts in line with the loss reduction they buy? Secondary: does a on
 
 **B. Entry event study (main causal estimate).** About 465 communities entered CRS between 2011 and 2020, and 424 of them share a county with never-CRS communities. Callaway and Sant'Anna estimator with never-CRS communities in the same county as controls. A first raw look shows entrants had roughly twice the loss cost of same-county controls in the two years before entry, which is the flood-driven entry pattern. The design has to account for it: match or condition on pre-entry losses, and report the pre-trend.
 
+*As run:* a stacked design (one stack per entry cohort, clean never-CRS controls only), which handles staggered adoption the same way. The first version used stack-by-year fixed effects; placebo tests (gate 3) showed it was biased, so the final version compares entrants and controls within county and year. See RESULTS.md, sections B and C.
+
 **C. Class-step effect (dropped).** Claims are back-stamped the same way as policies (0 of 1,667 communities change class on claims), so no public source has year-by-year class history. A carries the class question.
 
 ## Why county-by-year fixed effects
@@ -32,10 +34,11 @@ Flood losses are dominated by rare events. Comparing communities within the same
 1. **Exposure is real.** National earned policy-years by year are close to FEMA's published policies-in-force totals (about 5 million in the 2010s) with no unexplained swings. Claim rates spike in known catastrophe years such as 2012 and 2017. If this fails, stop and fix the pipeline.
 2. **There is variation to use.** Count CRS entries by year, class changes by year, and county-years with both CRS and non-CRS communities. If mixed county-years are rare, drop the county-by-year design.
 3. **Power.** Simulate the minimum detectable effect for loss cost given observed variance. If the per-step MDE is above about 15%, report C as a pooled slope with the MDE stated rather than per-class effects.
+   *As run:* `python analysis/run_design.py` assigns fake CRS entry to never-CRS communities and fake classes within county-years, then measures each design's bias, false-positive rate, and minimum detectable effect from the placebo distribution rather than from analytic standard errors.
 
 ## Status
 
-A and B done; see [RESULTS.md](RESULTS.md). The estimation design was written before results, and the changes after the first load (B as the main causal design, C dropped) are recorded above with their reasons.
+A, B, and the design checks are done; see [RESULTS.md](RESULTS.md). The estimation design was written before results. Changes made after seeing data (B as the main causal design, C dropped, B moved to a within-county comparison after the placebo checks) are recorded above with their reasons.
 
 ## Out of scope for this version
 
