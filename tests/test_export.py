@@ -22,5 +22,8 @@ def test_export_writes_parquet_and_bi_csvs(con, loaded_lake, tmp_path, monkeypat
     assert cli.cmd_export(None) == 0
     out = tmp_path / "data" / "export"
     assert (out / "community_year_panel.parquet").exists()
+    # Landing files for the Databricks port (databricks/upload.sh).
+    for t in ("nfip_claims", "community_status", "policy_exposure_community_year"):
+        assert (out / f"{t}.parquet").exists()
     assert (out / "bi" / "community_year.csv").read_text().startswith("community_id")
     assert (out / "bi" / "dq_results.csv").exists() and (out / "bi" / "run_log.csv").exists()

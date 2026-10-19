@@ -11,8 +11,10 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-import duckdb
+if TYPE_CHECKING:  # type hints only, so the checks also load on Spark without DuckDB
+    import duckdb
 
 log = logging.getLogger(__name__)
 

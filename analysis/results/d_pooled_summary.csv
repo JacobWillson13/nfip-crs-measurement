@@ -1,0 +1,2 @@
+per_step_effect_pct,per_step_low90_pct,per_step_high90_pct,p_per_step_reduction_below_5pct,tau_median,tau_high90,placebo_critical_value,total_expected_gap_usd,total_expected_abs_gap_usd,total_evpi_usd,total_evsi_half_variance_usd
+-3.823358431968027,-13.233422186446697,5.978697398995081,0.5835,0.19,0.4025,2.515759545928398,-48334350.048723325,364103781.02130795,335968732.2524979,96040223.33897933

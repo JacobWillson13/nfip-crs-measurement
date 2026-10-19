@@ -1,12 +1,14 @@
 # Results
 
-Data: national NFIP panel, 2010 to 2024, 20,668 communities, 334,656 community-years (OpenFEMA, loaded 2026-10-15). Code: [run_analysis.py](run_analysis.py) for the estimates, [run_design.py](run_design.py) for the placebo checks. Tables: [results/](results/).
+Data: national NFIP panel, 2010 to 2024, 20,668 communities, 334,656 community-years (OpenFEMA, loaded 2026-10-15). Code: [run_analysis.py](run_analysis.py) for the estimates, [run_design.py](run_design.py) for the placebo checks, [run_decision.py](run_decision.py) for the pricing decision, [run_experiment.py](run_experiment.py) for the experiment design. Tables: [results/](results/).
 
 ## Answer
 
 **CRS discounts look priced about right on claim frequency; loss cost points the same way but is not conclusive.** Within the same county and year, each CRS class step is associated with **5% fewer claims per policy-year** (95% CI: 1.6% to 8.5% fewer, placebo-calibrated, p = 0.005) and **6% lower loss cost** (95% CI: 12.7% lower to 1.4% higher, p = 0.10). The discount schedule gives 5% per step. Both estimates are consistent with it.
 
 **The causal effect of joining CRS cannot be measured with public data, and the first design I used for it was broken.** Placebo tests showed the original difference-in-differences had a built-in bias of about +40% and flagged fake effects 25% of the time instead of 5%. A within-county design fixes the bias and halves the noise, but with 395 entrants it can only detect a 53% drop in claims or a 79% drop in loss cost. Detecting a 20% drop in claims would take 6,500 to 8,300 entrants; only 1,777 communities have ever joined CRS.
+
+**What to do about it.** Re-pricing the classes on today's evidence would cut the expected pricing error only slightly ($364M to $336M a year, in expected-loss dollars), because the evidence is too uncertain to move on. Halving that uncertainty is worth about $96M a year, so better data is the high-value action; the Class 7 and Class 9 discounts are the most likely to be too generous (85% and 94%). A randomized recruitment trial could measure whether outreach raises CRS participation, but not whether participation reduces claims ([EXPERIMENT.md](EXPERIMENT.md)).
 
 ## A. Loss cost by CRS class (pricing adequacy)
 
@@ -94,6 +96,44 @@ The analytic intervals understate the uncertainty (section C), so the placebo p-
 - **Claim frequency is the outcome to use.** Its noise falls roughly with the square root of the number of entrants. Loss cost barely improves with more entrants, because a few catastrophes dominate it however many communities are added.
 - **What it would take.** Extrapolating the placebo spread, detecting a 20% drop in claim frequency needs about 6,500 to 8,300 entrants. Only 1,777 communities have ever entered CRS. No realistic sample gets loss cost there.
 
+## D. Pricing decision: partial pooling and value of information
+
+[run_decision.py](run_decision.py) turns analysis A into a pricing decision for each class. Pricing needs the *predictive* relativity (expected loss of a class-c community relative to a non-CRS neighbor), not the causal effect of CRS, so A's within-county comparison is the right input even though it is not causal.
+
+**Partial pooling.** The five class estimates are noisy, so they are pooled in a normal hierarchical model: each class's log relativity is a common per-step slope times its class steps, plus a class-specific deviation. Classes borrow strength from the slope but can depart from it as far as the data support. The covariance is widened by the placebo critical value from section C (2.5 instead of 1.96), so the posterior carries the corrected uncertainty. The model is solved exactly given the normal approximation, without MCMC.
+
+![Class relativities against the schedule](figures/d_class_relativities.png)
+
+**Decision quantities**, at today's exposure (2022 to 2024 policy-years) and long-run loss cost (2010 to 2024), in dollars of expected annual loss:
+
+| Class | Communities | Pooled loss cost vs non-CRS (90% interval) | Schedule | P(discount too generous) | Expected gap | Best discount now | Value of perfect information | Value of halving uncertainty |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 to 5 | 197 | -24% (-52% to +18%) | -26% | 52% | +$24M | 30% | $206M | $59M |
+| 6 | 207 | -16% (-47% to +29%) | -20% | 57% | -$1M | 22% | $53M | $15M |
+| 7 | 346 | +1% (-23% to +34%) | -15% | 85% | -$62M | 2% | $56M | $16M |
+| 8 | 311 | -13% (-35% to +11%) | -10% | 42% | +$5M | 15% | $11M | $3M |
+| 9 | 189 | +18% (-6% to +61%) | -5% | 94% | -$14M | -15% | $9M | $3M |
+| **All** | 1,250 | | | | **-$48M** | | **$336M** | **$96M** |
+
+"Expected gap" is the premium the schedule implies minus expected loss: negative means the discount is too generous. "Best discount now" minimizes the expected absolute gap given current evidence. "Value of perfect information" (EVPI) is the expected absolute gap that remains after choosing that discount; "value of halving uncertainty" (EVSI) is how much a study with as much information again as today's data, such as recovered historical CRS classes, would reduce it.
+
+**What this says:**
+
+- **On average the schedule is close.** The pooled per-step slope is -3.8% (90% interval -13% to +6%) against the schedule's -5%. Net of all classes, the schedule gives away about $48M a year more than the evidence supports, out of about $1.8B a year of expected loss in CRS communities.
+- **Classes 7 and 9 are the outliers.** Their losses look no lower than non-CRS neighbors', so their discounts are probably too generous. Class 9 is the entry tier, and communities often join after floods; for pricing that still matters, but before acting it is worth checking whether Class 9's excess losses persist after the first few years in the program.
+- **Re-pricing now buys little; better data buys a lot.** Moving every class to its best discount today cuts the expected absolute gap from $364M to $336M a year. Halving the uncertainty is worth about $96M a year, far more than the cost of recovering historical CRS classes from FEMA's semiannual community lists, the next step listed below.
+
+## E. Experiment design: randomized CRS recruitment
+
+Full plan: [EXPERIMENT.md](EXPERIMENT.md). [run_experiment.py](run_experiment.py) replays the real panel to size a trial that offers CRS application support to a random half of 5,612 eligible never-CRS communities, randomized within county, with five years of follow-up.
+
+![Experiment power](figures/e_experiment_power.png)
+
+- **Uptake is measurable.** About 3.9% of comparable communities join CRS on their own within five years; the trial would detect a 1.5-point increase.
+- **The effect on claims is not.** With every eligible community, the offer must cut claims by 21% to be detected. Since only communities that join because of the offer carry the effect, joining must cut claims by about 37% at 50% uptake, or 61% at 25% uptake. Randomization fixes the bias that broke the observational design, but not catastrophe noise.
+- **Whole-county randomization**, the usual guard against spillovers, is not viable here: the detectable effect of the offer rises to 71%.
+- **Recommendation:** run the trial with uptake as the primary outcome, report claims as a secondary outcome with its detectable effect stated in advance, and measure the effect on losses with a modeled outcome (catastrophe-model average annual loss) or with counts of the mitigation actions CRS credits.
+
 ## CRS history: why class changes cannot be studied
 
 FEMA's redacted policies and claims both carry each community's **current** CRS class on every historical record. No community ever changes class in either dataset, and 91% of community-years before a community joined CRS are stamped as CRS. Class history is rebuilt from Community Status Book dates instead:
@@ -123,5 +163,5 @@ These were run on the full panel and left out because they add noise, not eviden
 ## Next steps
 
 - Recover historical CRS classes from FEMA's semiannual CRS community lists. That would unlock the class-step design and expand A's 2010 to 2021 sample.
-- A Bayesian hierarchical model of class effects, to stabilize the noisy class-by-class estimates through partial pooling.
+- A modeled-loss outcome (catastrophe-model average annual loss) for the causal question, which removes the weather noise that limits both B and the experiment.
 - Separate building from contents losses, and SFHA from non-SFHA exposure.

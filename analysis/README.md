@@ -38,8 +38,8 @@ Flood losses are dominated by rare events. Comparing communities within the same
 
 ## Status
 
-A, B, and the design checks are done; see [RESULTS.md](RESULTS.md). The estimation design was written before results. Changes made after seeing data (B as the main causal design, C dropped, B moved to a within-county comparison after the placebo checks) are recorded above with their reasons.
+A, B, the design checks, the pricing decision analysis, and the experiment design are done; see [RESULTS.md](RESULTS.md) and [EXPERIMENT.md](EXPERIMENT.md). The estimation design was written before results. Changes made after seeing data (B as the main causal design, C dropped, B moved to a within-county comparison after the placebo checks) are recorded above with their reasons.
 
 ## Out of scope for this version
 
-Propensity weighting and the Bayesian hierarchical model are natural next steps if the class-step estimate is too noisy.
+Propensity weighting. (The Bayesian hierarchical model listed here originally is now part of the decision analysis, RESULTS.md section D.)

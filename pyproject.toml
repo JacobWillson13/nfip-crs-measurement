@@ -12,6 +12,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+# Spark parity test (tests/test_spark_parity.py); needs Java 17+.
+spark = ["pyspark>=4.0", "pandas>=2.2"]
 analysis = ["pandas>=2.2", "pyfixest>=0.30", "scipy>=1.11", "matplotlib>=3.8", "openpyxl>=3.1", "jupyter"]
 
 [tool.setuptools.packages.find]
@@ -28,3 +30,7 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks: spark, dbutils, and display are provided by the runtime.
+"databricks/notebooks/*.py" = ["F821", "E402"]

@@ -22,13 +22,17 @@ KNOWN = ("not_in_crs", "current_class")
 OUT = Path(__file__).parent / "results"
 
 
-def load(path: str) -> pd.DataFrame:
-    df = pd.read_parquet(path)
+def prepare(df: pd.DataFrame) -> pd.DataFrame:
+    """Analysis sample from the gold panel (a DataFrame, so Databricks can pass a Spark table)."""
     df = df[(df.year >= YEARS[0]) & (df.year <= YEARS[1]) & df.county_fips.notna()].copy()
-    df["paid_k"] = df.paid_total.clip(lower=0) / 1000.0     # 5 community-years net negative (adjustments)
-    df["log_epy"] = np.log(df.earned_policy_years)
-    df["sfha"] = df.share_exposure_sfha.fillna(0)
+    df["paid_k"] = df.paid_total.astype(float).clip(lower=0) / 1000.0   # 5 community-years net negative
+    df["log_epy"] = np.log(df.earned_policy_years.astype(float))
+    df["sfha"] = df.share_exposure_sfha.astype(float).fillna(0)
     return df
+
+
+def load(path: str) -> pd.DataFrame:
+    return prepare(pd.read_parquet(path))
 
 
 def drop_zero_groups(d: pd.DataFrame, outcome: str, groups: list[str]) -> pd.DataFrame:

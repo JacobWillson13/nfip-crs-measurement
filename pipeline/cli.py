@@ -126,7 +126,9 @@ def cmd_export(cfg) -> int:
     con = _connect(cfg)
     out = REPO_ROOT / "data" / "export"
     out.mkdir(parents=True, exist_ok=True)
-    tables = ["gold.community_year_panel", "gold.community_year_claims", "silver.community_status"]
+    # The silver tables are also the landing files for the Databricks port (databricks/README.md).
+    tables = ["gold.community_year_panel", "gold.community_year_claims", "silver.community_status",
+              "silver.nfip_claims", "silver.policy_exposure_community_year"]
     for table in tables:
         target = out / f"{table.split('.', 1)[1]}.parquet"
         con.execute(f"copy {table} to '{target.as_posix()}' (format parquet, compression zstd)")

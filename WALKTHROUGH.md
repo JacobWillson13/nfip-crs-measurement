@@ -24,14 +24,17 @@ Comparing communities in the same county and year, so they faced the same storms
 **5. Testing the design before trusting it (60 seconds)**
 For the causal effect of joining CRS, I first ran a stacked difference-in-differences: 395 entrants against never-CRS neighbors in the same counties. The result was -12% with a wide interval, which looked like an honest null. Then I tested the design itself. I gave fake entry dates to communities that never joined and reran it 150 times. With no real effect, it produced an average of +41% and flagged a significant result 25% of the time instead of 5%. County storm shocks were leaking in through the year fixed effects. I rebuilt it to compare entrants and controls within the same county and year, which removed the bias and halved the noise. Even so, 395 entrants can only detect a 53% drop in claims. Detecting 20% would need 6,500 to 8,300 entrants, and only 1,777 communities have ever joined. So the answer is that public data can't measure this, and the simulation says exactly why.
 
-**6. Close (30 seconds)**
-If I had another week: recover historical CRS classes from FEMA's semiannual community lists, which would unlock the class-upgrade design, and add a Bayesian hierarchical model to stabilize the class-by-class estimates.
+**6. Turning it into a decision (45 seconds)**
+Pricing doesn't need the causal effect; it needs to know whether a class-7 community is expected to lose less than its non-CRS neighbor. So I pooled the five class estimates in a Bayesian hierarchical model and priced the uncertainty. On today's evidence, moving every discount to its best value only cuts the expected pricing error from $364M to $336M a year. Halving the uncertainty is worth about $96M a year. So the recommendation is to buy data before re-pricing, starting with recovering historical CRS classes, and to look first at Class 7 and Class 9, whose discounts are 85% and 94% likely to be too generous. For the program question, whether recruiting communities into CRS reduces losses, I designed a randomized recruitment trial and sized it on the real data. It can measure whether outreach raises participation, but not whether participation reduces claims, so I'd pre-register participation as the primary outcome.
+
+**7. Close (15 seconds)**
+The pipeline runs locally in DuckDB and as a scheduled Databricks job from the same SQL and Python, with a test that checks the two give identical results.
 
 ## Emphasis by interview
 
-**Senior Data Engineer:** spend most of the time on sections 2 and 3. Open `ARCHITECTURE.md` and `pipeline/transform/sql/15_silver_policy_exposure.sql`, and show `ops.run_log` and `ops.dq_results`.
+**Senior Data Engineer:** spend most of the time on sections 2, 3, and 7. Open `ARCHITECTURE.md` and `pipeline/transform/sql/15_silver_policy_exposure.sql`, show `ops.run_log` and `ops.dq_results`, then the Databricks job run, `databricks.yml`, and `tests/test_spark_parity.py`.
 
-**Measurement Science:** spend most of the time on sections 3 to 5. Open `analysis/RESULTS.md` at section C and show the figure.
+**Measurement Science:** spend most of the time on sections 3 to 6. Open `analysis/RESULTS.md` at sections C and D and show the figures, then `analysis/EXPERIMENT.md`.
 
 ## Likely questions
 
@@ -50,7 +53,13 @@ It's 75 million rows, about 7,500 requests. The bulk Parquet file is one downloa
 One streaming pass in DuckDB that never materializes the row-level grain: 31 seconds on a laptop.
 
 *What would change in production?*
-Orchestration (a scheduled monthly run), alerting on error-level checks, dbt for the models once there are more of them, and the same bronze, silver, and gold layers in a Fabric lakehouse or warehouse.
+Part of it is already there: gold, quality checks, and analysis run as a scheduled Databricks job deployed from Git as an Asset Bundle, and a failing error-level check stops the job. Next: move the silver build onto the platform (it only stays local because of free-tier quotas), add alerting on failed runs, and use dbt once there are more models. In Fabric the same layers map onto a lakehouse, with notebooks in a Data Factory pipeline and Power BI on Direct Lake.
+
+*How do you know the Databricks version gives the same numbers?*
+The gold SQL and quality checks are the same files the local pipeline runs; a small translator only renames tables. A test builds the warehouse in DuckDB from fixtures, lands the silver tables as Parquet, rebuilds gold on local Spark, and compares every column and every quality check. It caught one real difference: Spark types a literal like 1.0 as DECIMAL where DuckDB uses DOUBLE, which changes a column's type but not its values.
+
+*Why is silver built locally?*
+Turning 75 million policy transactions into exposure takes 31 seconds in DuckDB on a laptop but would blow through the free tier's daily serverless quota. On a paid workspace the same SQL would run there.
 
 *What broke on the first real run?*
 Three things the tests didn't cover. The CRS back-stamping. Shares coming out NULL instead of 0 because a filtered sum over zero rows is NULL in SQL. And 125 claims with negative payments, which turned out to be legitimate adjustments, so that check became a warning.
@@ -72,6 +81,18 @@ No. It's the right comparison for checking whether the discount schedule tracks 
 *How do you know your standard errors are right?*
 I don't assume it; I test it. For each design I simulate placebo treatments on the real data and check how often a fake effect comes out significant. For A, 9% to 11% instead of 5%, so I widen the intervals using the placebo's critical values. For the original B design, 25%, plus a bias, which is why I replaced it.
 
+*If A isn't causal, how can you use it for pricing?*
+Pricing needs the predictive relativity: how much a class-7 community is expected to lose compared with a non-CRS neighbor. Selection is part of that relativity, and insurers price on it either way. The causal effect matters for a different decision, whether CRS is worth promoting, which is what the experiment is for.
+
+*Why partial pooling?*
+The five class estimates have intervals of 40 points or more, and pricing each one on its own would chase noise. The hierarchical model shrinks each class toward a common per-step slope, by as much as the data say the classes actually differ. I widened the input uncertainty by the placebo critical value first, so the pooling doesn't inherit overconfident standard errors.
+
+*What does $96M a year of value of information mean?*
+It's the expected reduction in absolute pricing error, in expected-loss dollars, from a study that adds as much information as we already have. It's an upper bound on what that data is worth paying for each year, and recovering historical CRS classes costs far less, so the data is worth getting before re-pricing.
+
+*Why not just run an experiment on claims?*
+I simulated it on the real data. Even offering support to all 5,612 eligible communities, the offer would have to cut claims by 21% to be detected; if half the offered communities join, joining would have to cut claims by 37%. Randomization removes bias but not catastrophe noise. The trial is worth running for participation, which it measures well, and the loss effect needs a modeled outcome.
+
 *Why did the original DiD have a bias if the controls were in the same counties?*
 It used year fixed effects, not county-by-year. Counties contribute different ratios of entrants to controls, so a storm in one county moves the pooled entrant and control averages by different amounts. Summing entrants and controls within each county-year and adding county-by-year fixed effects removes that. Doing it at the community level didn't converge in PPML.
 
@@ -92,4 +113,7 @@ From the placebo spread with 395 entrants: 53% for claim frequency and 79% for l
 - Built a national flood-insurance data pipeline (Python, SQL, DuckDB) that turns 75M FEMA policy transactions and 2.7M claims into an analysis-ready panel of 335K community-years, with row-count reconciliation, schema contracts, and 20+ automated quality checks
 - Caught a silent source-data defect through feasibility gates (historical CRS classes back-stamped onto 91% of pre-entry records) and rebuilt treatment history from a second source
 - Estimated that each FEMA CRS class step is associated with about 5% fewer flood claims per policy-year (95% CI 1.6% to 8.5%, placebo-calibrated) against a 5% scheduled discount, using Poisson regression with county-by-year fixed effects
+- Turned noisy class estimates into a pricing decision with a Bayesian hierarchical model and value-of-information analysis: re-pricing on current evidence cuts expected error only from $364M to $336M a year, while halving uncertainty is worth about $96M a year
+- Designed and power-tested a randomized CRS recruitment trial on historical data; showed it could detect a 1.5-point change in participation but not a realistic effect on claims, and pre-registered participation as the primary outcome
+- Ported the gold, quality, and analysis layers to a scheduled Databricks serverless job (Delta, Unity Catalog, MLflow, Asset Bundles) running the same SQL as the local DuckDB pipeline, with a Spark parity test
 - Used placebo simulation to show a difference-in-differences design had a +41% bias and a 25% false-positive rate, replaced it with a within-county design that removed the bias and halved the noise, and quantified the sample needed for a 20% effect (6,500+ entrants vs 1,777 available)

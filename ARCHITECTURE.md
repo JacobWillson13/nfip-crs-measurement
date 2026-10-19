@@ -23,7 +23,7 @@ gold    gold.community_year_claims            claims by community-year, 1978 onw
 ops     ops.run_log, ops.watermarks, ops.dq_results
 ```
 
-Everything runs locally on DuckDB and Parquet. The layers map one to one onto a Fabric lakehouse (bronze files in OneLake, silver and gold as Delta tables) if ported later.
+Everything runs locally on DuckDB and Parquet. Gold, quality checks, and analysis also run as a scheduled Databricks job on Delta tables, from the same SQL and Python ([databricks/README.md](databricks/README.md)). The layers map one to one onto a Fabric lakehouse; the mapping table is in the same README.
 
 ## Design decisions
 
