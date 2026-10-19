@@ -17,14 +17,15 @@ select
     order by n_entrants limit 1)                                                       as entry_mde_claims_pct;
 
 -- dataset: losses_by_year
--- Panel totals by year and state, 2010 to 2024; rates are computed in the widgets as ratios of sums.
-select year, state,
+-- National totals and rates by year, 2010 to 2024. Rates are computed here: dashboard widgets only take plain aggregates.
+select year,
        sum(earned_policy_years)                                   as policy_years,
        sum(n_claims)                                              as claims,
-       sum(paid_total) / 1e6                                      as paid_musd
+       1000 * sum(n_claims) / sum(earned_policy_years)            as claims_per_1k_policy_years,
+       sum(paid_total) / 1e9                                      as paid_busd
 from workspace.nfip.gold_community_year_panel
 where year between 2010 and 2024
-group by year, state;
+group by year;
 
 -- dataset: class_decision
 -- Pricing decision by CRS class: pooled relativity vs scheduled discount, and the value of information.
@@ -65,7 +66,9 @@ where outcome = 'n_claims';
 
 -- dataset: pipeline_health
 -- Quality checks from the latest job run.
-select check_name, layer, severity, failing_rows, passed,
+select check_name, layer, severity, failing_rows,
+       case when passed then 'yes' else 'no' end                  as passed,
+       case when passed then 1 else 0 end                         as passed_flag,
        case when passed then 0 when severity = 'error' then 1 else 0 end as blocking
 from workspace.nfip.ops_dq_results
 where run_at = (select max(run_at) from workspace.nfip.ops_dq_results);

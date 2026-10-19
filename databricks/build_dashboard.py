@@ -90,11 +90,11 @@ def chart(kind: str, dataset: str, x: tuple[str, str, str, str], y: tuple[str, s
 
 
 def table(dataset: str, columns: list[tuple[str, str, str]], title: str, p: dict, description: str = "") -> dict:
-    """columns = (field, title, type) with type string | integer | float | boolean | datetime."""
+    """columns = (field, title, type) with type string | integer | float | datetime. The spec keys and
+    per-column keys mirror dashboards exported by Databricks; leaving any out makes the widget invalid."""
     cols = []
     for i, (field, col_title, kind) in enumerate(columns):
-        display = {"integer": "number", "float": "number", "boolean": "boolean",
-                   "datetime": "datetime"}.get(kind, "string")
+        display = {"integer": "number", "float": "number", "datetime": "datetime"}.get(kind, "string")
         c = {"fieldName": field, "title": col_title, "displayName": col_title, "type": kind, "displayAs": display,
              "visible": True, "order": 100000 + i, "alignContent": "left" if display == "string" else "right",
              "booleanValues": ["false", "true"], "allowSearch": False, "allowHTML": False,
@@ -102,29 +102,17 @@ def table(dataset: str, columns: list[tuple[str, str, str]], title: str, p: dict
              "imageUrlTemplate": "{{ @ }}", "imageTitleTemplate": "{{ @ }}", "imageWidth": "", "imageHeight": "",
              "linkUrlTemplate": "{{ @ }}", "linkTextTemplate": "{{ @ }}", "linkTitleTemplate": "{{ @ }}",
              "linkOpenInNewTab": True}
-        if kind == "float":
-            c["numberFormat"] = "0.0"
+        if kind in ("integer", "float"):
+            c["numberFormat"] = "0" if kind == "integer" else "0.0"
+        if kind == "datetime":
+            c["dateTimeFormat"] = "YYYY-MM-DD HH:mm"
         cols.append(c)
     fields = {f: f"`{f}`" for f, _, _ in columns}
     return {"widget": {"name": _name("table"), "queries": _query(dataset, fields, True),
-                       "spec": {"version": 1, "widgetType": "table", "condensed": True,
-                                "allowHTMLByDefault": False, "encodings": {"columns": cols},
+                       "spec": {"version": 1, "widgetType": "table", "condensed": True, "withRowNumber": False,
+                                "allowHTMLByDefault": False, "itemsPerPage": 25, "paginationSize": "default",
+                                "invisibleColumns": [], "encodings": {"columns": cols},
                                 "frame": _frame(title, description)}},
-            "position": p}
-
-
-def multi_select(dataset: str, field: str, title: str, p: dict) -> dict:
-    qname = f"filter_{dataset}_{field}"
-    return {"widget": {"name": _name("filter"),
-                       "queries": [{"name": qname, "query": {
-                           "datasetName": dataset, "disaggregated": False,
-                           "fields": [{"name": field, "expression": f"`{field}`"},
-                                      {"name": f"{field}_associativity",
-                                       "expression": "COUNT_IF(`associative_filter_predicate_group`)"}]}}],
-                       "spec": {"version": 2, "widgetType": "filter-multi-select",
-                                "encodings": {"fields": [
-                                    {"fieldName": field, "displayName": title, "queryName": qname}]},
-                                "frame": _frame(title)}},
             "position": p}
 
 
@@ -144,16 +132,15 @@ year so communities faced the same storms. Pipeline, methods, and caveats: [GitH
         counter("headline", "MAX(`claims_per_step_pct`)", "Claims per class step (%)", pos(0, 2, 2, 2),
                 "Within county and year; schedule is -5% per step"),
         counter("headline", "MAX(`expected_abs_gap_musd`)", "Expected pricing gap ($M/yr)", pos(2, 2, 2, 2),
-                "Expected absolute gap between schedule and expected loss, CRS classes"),
+                "Schedule vs expected loss, all CRS classes"),
         counter("headline", "MAX(`evsi_musd`)", "Value of halving uncertainty ($M/yr)", pos(4, 2, 2, 2),
                 "Expected reduction in pricing gap from twice the evidence"),
-        multi_select("losses_by_year", "state", "State", pos(0, 4, 2, 1)),
         chart("line", "losses_by_year", ("year", "`year`", "categorical", "Year"),
-              ("claims_per_1k", "1000 * SUM(`claims`) / SUM(`policy_years`)", "Claims per 1,000 policy-years"),
-              "Claim frequency", pos(0, 5, 3, 6), description="Spikes are catastrophe years: 2012, 2016, 2017, 2024"),
+              ("claims_per_1k", "SUM(`claims_per_1k_policy_years`)", "Claims per 1,000 policy-years"),
+              "Claim frequency", pos(0, 4, 3, 6), description="Spikes are catastrophe years: 2012, 2016, 2017, 2024"),
         chart("bar", "losses_by_year", ("year", "`year`", "categorical", "Year"),
-              ("paid", "SUM(`paid_musd`)", "Paid losses ($M)"),
-              "Paid NFIP losses", pos(3, 5, 3, 6)),
+              ("paid", "SUM(`paid_busd`)", "Paid losses ($B)"),
+              "Paid NFIP losses ($B)", pos(3, 4, 3, 6)),
     ])
 
 
@@ -221,11 +208,11 @@ shared with the local DuckDB pipeline. An error-level failure stops the job befo
 warnings are recorded for review.
 """, pos(0, 0, 6, 2)),
         counter("pipeline_health", "COUNT(`check_name`)", "Checks run", pos(0, 2, 2, 2)),
-        counter("pipeline_health", "SUM(CASE WHEN `passed` THEN 1 ELSE 0 END)", "Checks passed", pos(2, 2, 2, 2)),
+        counter("pipeline_health", "SUM(`passed_flag`)", "Checks passed", pos(2, 2, 2, 2)),
         counter("pipeline_health", "SUM(`blocking`)", "Blocking failures", pos(4, 2, 2, 2)),
         table("pipeline_health", [("check_name", "Check", "string"), ("layer", "Layer", "string"),
                                   ("severity", "Severity", "string"), ("failing_rows", "Failing rows", "integer"),
-                                  ("passed", "Passed", "boolean")], "Quality checks", pos(0, 4, 4, 8)),
+                                  ("passed", "Passed", "string")], "Quality checks", pos(0, 4, 4, 8)),
         table("load_log", [("dataset", "Table", "string"), ("file_rows", "File rows", "integer"),
                            ("table_rows", "Table rows", "integer"), ("status", "Status", "string"),
                            ("loaded_at", "Loaded at", "datetime")], "Latest silver loads", pos(4, 4, 2, 8)),

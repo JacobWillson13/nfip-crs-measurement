@@ -61,3 +61,31 @@ def test_layout_fits_grid_without_overlaps():
             mine = {(i, j) for i in range(x, x + w) for j in range(y, y + h)}
             assert not cells & mine, (p["name"], item["widget"]["name"])
             cells |= mine
+
+
+# Widget fields accept a column or a single aggregate of one column. Arithmetic or CASE inside a
+# widget renders empty on Databricks, so calculations belong in dashboard_queries.sql.
+SIMPLE = re.compile(r"^(`[^`]+`|(SUM|AVG|MIN|MAX|COUNT|COUNT_IF)\(`[^`]+`\))$")
+TABLE_SPEC_KEYS = {"invisibleColumns", "itemsPerPage", "paginationSize", "withRowNumber", "condensed",
+                   "allowHTMLByDefault"}
+
+
+def test_widget_fields_are_plain_aggregates():
+    for _, item in _widgets(bd.build()):
+        for q in item["widget"].get("queries", []):
+            for f in q["query"]["fields"]:
+                assert SIMPLE.match(f["expression"]), (item["widget"]["name"], f["expression"])
+
+
+def test_tables_match_exported_spec():
+    for _, item in _widgets(bd.build()):
+        spec = item["widget"].get("spec", {})
+        if spec.get("widgetType") != "table":
+            continue
+        assert TABLE_SPEC_KEYS <= spec.keys(), item["widget"]["name"]
+        for c in spec["encodings"]["columns"]:
+            assert c["type"] in {"string", "integer", "float", "datetime"}, c["fieldName"]
+            if c["type"] in {"integer", "float"}:
+                assert "numberFormat" in c, c["fieldName"]
+            if c["type"] == "datetime":
+                assert "dateTimeFormat" in c, c["fieldName"]

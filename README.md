@@ -82,7 +82,7 @@ tests/                        unit and end-to-end tests against a fake API and s
 analysis/                     measurement plan, estimates, placebo design checks, pricing decision, experiment design
 databricks.yml, databricks/   Asset Bundle: serverless job notebooks, upload script, dashboard queries
 pipeline/spark_sql.py         runs the same gold SQL and quality checks on Spark
-dashboard/                    Power BI report on the panel (CSV inputs in data/export/bi/)
+powerbi/                      Power BI alternative to the Databricks dashboard (CSV inputs in data/export/bi/)
 ```
 
 ## Data sources

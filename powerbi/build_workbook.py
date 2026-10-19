@@ -3,7 +3,7 @@
 The Power BI service builds one semantic model per uploaded file, and a report uses
 one model. A single workbook lets one report hold all three pages.
 
-    python dashboard/build_workbook.py
+    python powerbi/build_workbook.py
 """
 
 from pathlib import Path

@@ -18,15 +18,16 @@
     },
     {
       "name": "losses_by_year",
-      "displayName": "Panel totals by year and state, 2010 to 2024; rates are computed in the widgets ",
+      "displayName": "National totals and rates by year, 2010 to 2024. Rates are computed here: dashbo",
       "queryLines": [
-        "select year, state,\n",
+        "select year,\n",
         "       sum(earned_policy_years)                                   as policy_years,\n",
         "       sum(n_claims)                                              as claims,\n",
-        "       sum(paid_total) / 1e6                                      as paid_musd\n",
+        "       1000 * sum(n_claims) / sum(earned_policy_years)            as claims_per_1k_policy_years,\n",
+        "       sum(paid_total) / 1e9                                      as paid_busd\n",
         "from workspace.nfip.gold_community_year_panel\n",
         "where year between 2010 and 2024\n",
-        "group by year, state\n"
+        "group by year\n"
       ]
     },
     {
@@ -79,7 +80,9 @@
       "name": "pipeline_health",
       "displayName": "Quality checks from the latest job run.",
       "queryLines": [
-        "select check_name, layer, severity, failing_rows, passed,\n",
+        "select check_name, layer, severity, failing_rows,\n",
+        "       case when passed then 'yes' else 'no' end                  as passed,\n",
+        "       case when passed then 1 else 0 end                         as passed_flag,\n",
         "       case when passed then 0 when severity = 'error' then 1 else 0 end as blocking\n",
         "from workspace.nfip.ops_dq_results\n",
         "where run_at = (select max(run_at) from workspace.nfip.ops_dq_results)\n"
@@ -193,7 +196,7 @@
                 "showTitle": true,
                 "title": "Expected pricing gap ($M/yr)",
                 "showDescription": true,
-                "description": "Expected absolute gap between schedule and expected loss, CRS classes"
+                "description": "Schedule vs expected loss, all CRS classes"
               }
             }
           },
@@ -248,54 +251,7 @@
         },
         {
           "widget": {
-            "name": "filter_05",
-            "queries": [
-              {
-                "name": "filter_losses_by_year_state",
-                "query": {
-                  "datasetName": "losses_by_year",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "state",
-                      "expression": "`state`"
-                    },
-                    {
-                      "name": "state_associativity",
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "filter-multi-select",
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "state",
-                    "displayName": "State",
-                    "queryName": "filter_losses_by_year_state"
-                  }
-                ]
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "State"
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 4,
-            "width": 2,
-            "height": 1
-          }
-        },
-        {
-          "widget": {
-            "name": "line_06",
+            "name": "line_05",
             "queries": [
               {
                 "name": "main_query",
@@ -309,7 +265,7 @@
                     },
                     {
                       "name": "claims_per_1k",
-                      "expression": "1000 * SUM(`claims`) / SUM(`policy_years`)"
+                      "expression": "SUM(`claims_per_1k_policy_years`)"
                     }
                   ]
                 }
@@ -353,14 +309,14 @@
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 4,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "bar_07",
+            "name": "bar_06",
             "queries": [
               {
                 "name": "main_query",
@@ -374,7 +330,7 @@
                     },
                     {
                       "name": "paid",
-                      "expression": "SUM(`paid_musd`)"
+                      "expression": "SUM(`paid_busd`)"
                     }
                   ]
                 }
@@ -399,9 +355,9 @@
                   "scale": {
                     "type": "quantitative"
                   },
-                  "displayName": "Paid losses ($M)",
+                  "displayName": "Paid losses ($B)",
                   "axis": {
-                    "title": "Paid losses ($M)"
+                    "title": "Paid losses ($B)"
                   }
                 },
                 "label": {
@@ -410,13 +366,13 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Paid NFIP losses"
+                "title": "Paid NFIP losses ($B)"
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 5,
+            "y": 4,
             "width": 3,
             "height": 6
           }
@@ -430,7 +386,7 @@
       "layout": [
         {
           "widget": {
-            "name": "text_08",
+            "name": "text_07",
             "multilineTextboxSpec": {
               "lines": [
                 "## Pricing decision by CRS class\n",
@@ -450,7 +406,7 @@
         },
         {
           "widget": {
-            "name": "bar_09",
+            "name": "bar_08",
             "queries": [
               {
                 "name": "main_query",
@@ -515,7 +471,7 @@
         },
         {
           "widget": {
-            "name": "bar_10",
+            "name": "bar_09",
             "queries": [
               {
                 "name": "main_query",
@@ -578,7 +534,7 @@
         },
         {
           "widget": {
-            "name": "table_11",
+            "name": "table_10",
             "queries": [
               {
                 "name": "main_query",
@@ -634,7 +590,11 @@
               "version": 1,
               "widgetType": "table",
               "condensed": true,
+              "withRowNumber": false,
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
               "encodings": {
                 "columns": [
                   {
@@ -942,7 +902,7 @@
       "layout": [
         {
           "widget": {
-            "name": "text_12",
+            "name": "text_11",
             "multilineTextboxSpec": {
               "lines": [
                 "## Can the causal effect of joining CRS be measured?\n",
@@ -962,7 +922,7 @@
         },
         {
           "widget": {
-            "name": "line_13",
+            "name": "line_12",
             "queries": [
               {
                 "name": "main_query",
@@ -1036,7 +996,7 @@
         },
         {
           "widget": {
-            "name": "line_14",
+            "name": "line_13",
             "queries": [
               {
                 "name": "main_query",
@@ -1110,7 +1070,7 @@
         },
         {
           "widget": {
-            "name": "table_15",
+            "name": "table_14",
             "queries": [
               {
                 "name": "main_query",
@@ -1150,7 +1110,11 @@
               "version": 1,
               "widgetType": "table",
               "condensed": true,
+              "withRowNumber": false,
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
               "encodings": {
                 "columns": [
                   {
@@ -1232,7 +1196,8 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
                   },
                   {
                     "fieldName": "itt_mde_pct",
@@ -1342,7 +1307,7 @@
       "layout": [
         {
           "widget": {
-            "name": "text_16",
+            "name": "text_15",
             "multilineTextboxSpec": {
               "lines": [
                 "## Pipeline health\n",
@@ -1361,7 +1326,7 @@
         },
         {
           "widget": {
-            "name": "counter_17",
+            "name": "counter_16",
             "queries": [
               {
                 "name": "main_query",
@@ -1401,7 +1366,7 @@
         },
         {
           "widget": {
-            "name": "counter_18",
+            "name": "counter_17",
             "queries": [
               {
                 "name": "main_query",
@@ -1411,7 +1376,7 @@
                   "fields": [
                     {
                       "name": "value",
-                      "expression": "SUM(CASE WHEN `passed` THEN 1 ELSE 0 END)"
+                      "expression": "SUM(`passed_flag`)"
                     }
                   ]
                 }
@@ -1441,7 +1406,7 @@
         },
         {
           "widget": {
-            "name": "counter_19",
+            "name": "counter_18",
             "queries": [
               {
                 "name": "main_query",
@@ -1481,7 +1446,7 @@
         },
         {
           "widget": {
-            "name": "table_20",
+            "name": "table_19",
             "queries": [
               {
                 "name": "main_query",
@@ -1517,7 +1482,11 @@
               "version": 1,
               "widgetType": "table",
               "condensed": true,
+              "withRowNumber": false,
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
               "encodings": {
                 "columns": [
                   {
@@ -1626,17 +1595,18 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
                   },
                   {
                     "fieldName": "passed",
                     "title": "Passed",
                     "displayName": "Passed",
-                    "type": "boolean",
-                    "displayAs": "boolean",
+                    "type": "string",
+                    "displayAs": "string",
                     "visible": true,
                     "order": 100004,
-                    "alignContent": "right",
+                    "alignContent": "left",
                     "booleanValues": [
                       "false",
                       "true"
@@ -1672,7 +1642,7 @@
         },
         {
           "widget": {
-            "name": "table_21",
+            "name": "table_20",
             "queries": [
               {
                 "name": "main_query",
@@ -1708,7 +1678,11 @@
               "version": 1,
               "widgetType": "table",
               "condensed": true,
+              "withRowNumber": false,
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
               "encodings": {
                 "columns": [
                   {
@@ -1763,7 +1737,8 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
                   },
                   {
                     "fieldName": "table_rows",
@@ -1790,7 +1765,8 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
                   },
                   {
                     "fieldName": "status",
@@ -1844,7 +1820,8 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true
+                    "linkOpenInNewTab": true,
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm"
                   }
                 ]
               },
