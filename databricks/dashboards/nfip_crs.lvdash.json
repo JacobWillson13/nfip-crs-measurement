@@ -1,0 +1,1867 @@
+{
+  "datasets": [
+    {
+      "name": "headline",
+      "displayName": "One row of headline numbers for the overview counters.",
+      "queryLines": [
+        "select\n",
+        "  (select effect_pct from workspace.nfip.results_pricing_adequacy\n",
+        "    where model = 'A_claim_frequency_per_class_step' and coefficient = 'class_steps')   as claims_per_step_pct,\n",
+        "  (select effect_pct from workspace.nfip.results_pricing_adequacy\n",
+        "    where model = 'A_loss_cost_per_class_step' and coefficient = 'class_steps')        as loss_cost_per_step_pct,\n",
+        "  (select total_expected_abs_gap_usd / 1e6 from workspace.nfip.results_pooled_summary) as expected_abs_gap_musd,\n",
+        "  (select total_evsi_half_variance_usd / 1e6 from workspace.nfip.results_pooled_summary) as evsi_musd,\n",
+        "  (select mde_pct from workspace.nfip.results_c_power_design\n",
+        "    where design = 'within_county' and outcome = 'claim_frequency'\n",
+        "    order by n_entrants limit 1)                                                       as entry_mde_claims_pct\n"
+      ]
+    },
+    {
+      "name": "losses_by_year",
+      "displayName": "Panel totals by year and state, 2010 to 2024; rates are computed in the widgets ",
+      "queryLines": [
+        "select year, state,\n",
+        "       sum(earned_policy_years)                                   as policy_years,\n",
+        "       sum(n_claims)                                              as claims,\n",
+        "       sum(paid_total) / 1e6                                      as paid_musd\n",
+        "from workspace.nfip.gold_community_year_panel\n",
+        "where year between 2010 and 2024\n",
+        "group by year, state\n"
+      ]
+    },
+    {
+      "name": "class_decision",
+      "displayName": "Pricing decision by CRS class: pooled relativity vs scheduled discount, and the ",
+      "queryLines": [
+        "select concat('Class ', crs_bin)                                  as crs_class,\n",
+        "       round(pooled_effect_pct, 1)                                as pooled_loss_cost_effect_pct,\n",
+        "       round(pooled_low90_pct, 1)                                 as low90_pct,\n",
+        "       round(pooled_high90_pct, 1)                                as high90_pct,\n",
+        "       round(scheduled_discount_pct, 1)                           as scheduled_discount_pct,\n",
+        "       round(pooled_effect_pct + scheduled_discount_pct, 1)       as losses_above_discount_pts,\n",
+        "       round(100 * p_discount_too_generous, 0)                    as p_too_generous_pct,\n",
+        "       round(expected_gap_usd / 1e6, 1)                           as expected_gap_musd,\n",
+        "       round(best_discount_pct, 1)                                as best_discount_pct,\n",
+        "       round(evpi_usd / 1e6, 1)                                   as evpi_musd,\n",
+        "       round(evsi_half_variance_usd / 1e6, 1)                     as evsi_half_variance_musd\n",
+        "from workspace.nfip.results_pricing_decision\n"
+      ]
+    },
+    {
+      "name": "entry_design",
+      "displayName": "Placebo simulation of the CRS entry difference-in-differences: detectable effect",
+      "queryLines": [
+        "select concat(case design when 'within_county' then 'Within county' else 'Year FE only' end, ', ',\n",
+        "              replace(outcome, '_', ' '))                         as design_outcome,\n",
+        "       n_entrants,\n",
+        "       round(mde_pct, 1)                                          as mde_pct,\n",
+        "       round(100 * false_positive_rate, 0)                        as false_positive_rate_pct,\n",
+        "       round(placebo_mean_pct, 1)                                 as bias_under_no_effect_pct\n",
+        "from workspace.nfip.results_c_power_design\n"
+      ]
+    },
+    {
+      "name": "experiment_power",
+      "displayName": "Proposed randomized CRS recruitment trial: detectable drop in claims by design a",
+      "queryLines": [
+        "select concat(case assignment when 'within_county' then 'Within county' else 'Whole counties' end, ', ',\n",
+        "              replace(analysis, '_', ' '))                        as design,\n",
+        "       case size when 'all' then 'All eligible' else concat('~', size, ' pilot') end as trial_size,\n",
+        "       cast(n_communities as int)                                 as communities,\n",
+        "       round(itt_mde_pct, 1)                                      as itt_mde_pct,\n",
+        "       round(complier_mde_pct_p50, 1)                             as complier_mde_pct_at_50pct_uptake,\n",
+        "       round(complier_mde_pct_p25, 1)                             as complier_mde_pct_at_25pct_uptake\n",
+        "from workspace.nfip.results_e_experiment_power\n",
+        "where outcome = 'n_claims'\n"
+      ]
+    },
+    {
+      "name": "pipeline_health",
+      "displayName": "Quality checks from the latest job run.",
+      "queryLines": [
+        "select check_name, layer, severity, failing_rows, passed,\n",
+        "       case when passed then 0 when severity = 'error' then 1 else 0 end as blocking\n",
+        "from workspace.nfip.ops_dq_results\n",
+        "where run_at = (select max(run_at) from workspace.nfip.ops_dq_results)\n"
+      ]
+    },
+    {
+      "name": "load_log",
+      "displayName": "Latest silver load per dataset, with file vs table row counts.",
+      "queryLines": [
+        "select dataset, file_rows, table_rows, status, loaded_at\n",
+        "from workspace.nfip.ops_load_log\n",
+        "qualify row_number() over (partition by dataset order by loaded_at desc) = 1\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Overview",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_01",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Are FEMA's CRS flood insurance discounts priced right?\n",
+                "Communities in FEMA's Community Rating System get 5% off flood insurance per class step. This dashboard compares\n",
+                "those discounts with observed losses across 335,000 NFIP community-years (2010 to 2024), within the same county and\n",
+                "year so communities faced the same storms. Pipeline, methods, and caveats: [GitHub repo](https://github.com/JacobWillson13/nfip-crs-measurement)."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_02",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`claims_per_step_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Claims per class step (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Claims per class step (%)",
+                "showDescription": true,
+                "description": "Within county and year; schedule is -5% per step"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_03",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`expected_abs_gap_musd`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Expected pricing gap ($M/yr)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Expected pricing gap ($M/yr)",
+                "showDescription": true,
+                "description": "Expected absolute gap between schedule and expected loss, CRS classes"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_04",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`evsi_musd`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Value of halving uncertainty ($M/yr)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Value of halving uncertainty ($M/yr)",
+                "showDescription": true,
+                "description": "Expected reduction in pricing gap from twice the evidence"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_05",
+            "queries": [
+              {
+                "name": "filter_losses_by_year_state",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "state",
+                      "expression": "`state`"
+                    },
+                    {
+                      "name": "state_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "state",
+                    "displayName": "State",
+                    "queryName": "filter_losses_by_year_state"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "State"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "line_06",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "claims_per_1k",
+                      "expression": "1000 * SUM(`claims`) / SUM(`policy_years`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "year",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Year",
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "fieldName": "claims_per_1k",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Claims per 1,000 policy-years",
+                  "axis": {
+                    "title": "Claims per 1,000 policy-years"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Claim frequency",
+                "showDescription": true,
+                "description": "Spikes are catastrophe years: 2012, 2016, 2017, 2024"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_07",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "paid",
+                      "expression": "SUM(`paid_musd`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "year",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Year",
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "fieldName": "paid",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Paid losses ($M)",
+                  "axis": {
+                    "title": "Paid losses ($M)"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Paid NFIP losses"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 5,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "pricing",
+      "displayName": "Pricing decision",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_08",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pricing decision by CRS class\n",
+                "Class relativities are partially pooled in a Bayesian hierarchical model, with uncertainty widened by\n",
+                "placebo tests. **Losses above discount** is the pooled loss cost relative to non-CRS neighbors plus the\n",
+                "scheduled discount: above zero, the class loses more than its discount assumes. Re-pricing on today's\n",
+                "evidence barely reduces the expected gap; better data (recovering historical CRS classes) is worth far more."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_09",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "above",
+                      "expression": "SUM(`losses_above_discount_pts`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "crs_class",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "CRS class",
+                  "axis": {
+                    "title": "CRS class"
+                  }
+                },
+                "y": {
+                  "fieldName": "above",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Points",
+                  "axis": {
+                    "title": "Points"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Losses above discount (points)",
+                "showDescription": true,
+                "description": "Pooled loss cost vs non-CRS neighbors, plus the scheduled discount"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_10",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "p",
+                      "expression": "SUM(`p_too_generous_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "crs_class",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "CRS class",
+                  "axis": {
+                    "title": "CRS class"
+                  }
+                },
+                "y": {
+                  "fieldName": "p",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Probability (%)",
+                  "axis": {
+                    "title": "Probability (%)"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Probability the discount is too generous"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "table_11",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "pooled_loss_cost_effect_pct",
+                      "expression": "`pooled_loss_cost_effect_pct`"
+                    },
+                    {
+                      "name": "low90_pct",
+                      "expression": "`low90_pct`"
+                    },
+                    {
+                      "name": "high90_pct",
+                      "expression": "`high90_pct`"
+                    },
+                    {
+                      "name": "scheduled_discount_pct",
+                      "expression": "`scheduled_discount_pct`"
+                    },
+                    {
+                      "name": "p_too_generous_pct",
+                      "expression": "`p_too_generous_pct`"
+                    },
+                    {
+                      "name": "expected_gap_musd",
+                      "expression": "`expected_gap_musd`"
+                    },
+                    {
+                      "name": "best_discount_pct",
+                      "expression": "`best_discount_pct`"
+                    },
+                    {
+                      "name": "evpi_musd",
+                      "expression": "`evpi_musd`"
+                    },
+                    {
+                      "name": "evsi_half_variance_musd",
+                      "expression": "`evsi_half_variance_musd`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "crs_class",
+                    "title": "Class",
+                    "displayName": "Class",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "pooled_loss_cost_effect_pct",
+                    "title": "Loss cost vs non-CRS (%)",
+                    "displayName": "Loss cost vs non-CRS (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "low90_pct",
+                    "title": "90% low",
+                    "displayName": "90% low",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "high90_pct",
+                    "title": "90% high",
+                    "displayName": "90% high",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "scheduled_discount_pct",
+                    "title": "Scheduled discount (%)",
+                    "displayName": "Scheduled discount (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "p_too_generous_pct",
+                    "title": "P(discount too generous) %",
+                    "displayName": "P(discount too generous) %",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "expected_gap_musd",
+                    "title": "Expected gap ($M/yr)",
+                    "displayName": "Expected gap ($M/yr)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100006,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "best_discount_pct",
+                    "title": "Best discount now (%)",
+                    "displayName": "Best discount now (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100007,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "evpi_musd",
+                    "title": "Value of perfect info ($M/yr)",
+                    "displayName": "Value of perfect info ($M/yr)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100008,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "evsi_half_variance_musd",
+                    "title": "Value of halving uncertainty ($M/yr)",
+                    "displayName": "Value of halving uncertainty ($M/yr)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100009,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Decision table",
+                "showDescription": true,
+                "description": "Dollars are expected annual loss at 2022 to 2024 exposure and 2010 to 2024 loss cost"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "designs",
+      "displayName": "Measurement designs",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_12",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Can the causal effect of joining CRS be measured?\n",
+                "**Left:** placebo simulations of the entry difference-in-differences. The original design (year fixed\n",
+                "effects only) was biased (+41% with no true effect) and flagged fake effects 25% of the time; comparing\n",
+                "within county and year fixes the bias but detects only large effects. **Right:** a proposed randomized\n",
+                "recruitment trial. It can measure whether outreach raises participation, but not a realistic effect on claims."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "line_13",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "entry_design",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "n_entrants",
+                      "expression": "`n_entrants`"
+                    },
+                    {
+                      "name": "mde",
+                      "expression": "AVG(`mde_pct`)"
+                    },
+                    {
+                      "name": "design_outcome",
+                      "expression": "`design_outcome`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "n_entrants",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "CRS entrants in the design",
+                  "axis": {
+                    "title": "CRS entrants in the design"
+                  }
+                },
+                "y": {
+                  "fieldName": "mde",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Minimum detectable effect (%)",
+                  "axis": {
+                    "title": "Minimum detectable effect (%)"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "design_outcome",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Design, outcome"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Observational design: detectable effect"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "line_14",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "experiment_power",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "communities",
+                      "expression": "`communities`"
+                    },
+                    {
+                      "name": "itt",
+                      "expression": "AVG(`itt_mde_pct`)"
+                    },
+                    {
+                      "name": "design",
+                      "expression": "`design`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "communities",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Communities in the trial",
+                  "axis": {
+                    "title": "Communities in the trial"
+                  }
+                },
+                "y": {
+                  "fieldName": "itt",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Detectable drop from the offer (%)",
+                  "axis": {
+                    "title": "Detectable drop from the offer (%)"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "design",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Design"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Randomized trial: detectable drop in claims"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "table_15",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "experiment_power",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "design",
+                      "expression": "`design`"
+                    },
+                    {
+                      "name": "trial_size",
+                      "expression": "`trial_size`"
+                    },
+                    {
+                      "name": "communities",
+                      "expression": "`communities`"
+                    },
+                    {
+                      "name": "itt_mde_pct",
+                      "expression": "`itt_mde_pct`"
+                    },
+                    {
+                      "name": "complier_mde_pct_at_50pct_uptake",
+                      "expression": "`complier_mde_pct_at_50pct_uptake`"
+                    },
+                    {
+                      "name": "complier_mde_pct_at_25pct_uptake",
+                      "expression": "`complier_mde_pct_at_25pct_uptake`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "design",
+                    "title": "Design",
+                    "displayName": "Design",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "trial_size",
+                    "title": "Size",
+                    "displayName": "Size",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "communities",
+                    "title": "Communities",
+                    "displayName": "Communities",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "itt_mde_pct",
+                    "title": "Offer effect detectable (%)",
+                    "displayName": "Offer effect detectable (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "complier_mde_pct_at_50pct_uptake",
+                    "title": "Joining effect, 50% uptake (%)",
+                    "displayName": "Joining effect, 50% uptake (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "complier_mde_pct_at_25pct_uptake",
+                    "title": "Joining effect, 25% uptake (%)",
+                    "displayName": "Joining effect, 25% uptake (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Trial power"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "health",
+      "displayName": "Pipeline health",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_16",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pipeline health\n",
+                "Latest run of the Databricks job: silver loads reconciled against their files, and the quality checks\n",
+                "shared with the local DuckDB pipeline. An error-level failure stops the job before the analysis runs;\n",
+                "warnings are recorded for review."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_17",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "COUNT(`check_name`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Checks run"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Checks run"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_18",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "SUM(CASE WHEN `passed` THEN 1 ELSE 0 END)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Checks passed"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Checks passed"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_19",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "SUM(`blocking`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Blocking failures"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Blocking failures"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "table_20",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "check_name",
+                      "expression": "`check_name`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "severity",
+                      "expression": "`severity`"
+                    },
+                    {
+                      "name": "failing_rows",
+                      "expression": "`failing_rows`"
+                    },
+                    {
+                      "name": "passed",
+                      "expression": "`passed`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "check_name",
+                    "title": "Check",
+                    "displayName": "Check",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "layer",
+                    "title": "Layer",
+                    "displayName": "Layer",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "severity",
+                    "title": "Severity",
+                    "displayName": "Severity",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "failing_rows",
+                    "title": "Failing rows",
+                    "displayName": "Failing rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "passed",
+                    "title": "Passed",
+                    "displayName": "Passed",
+                    "type": "boolean",
+                    "displayAs": "boolean",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Quality checks"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 4,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table_21",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "load_log",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "dataset",
+                      "expression": "`dataset`"
+                    },
+                    {
+                      "name": "file_rows",
+                      "expression": "`file_rows`"
+                    },
+                    {
+                      "name": "table_rows",
+                      "expression": "`table_rows`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "loaded_at",
+                      "expression": "`loaded_at`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "dataset",
+                    "title": "Table",
+                    "displayName": "Table",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "file_rows",
+                    "title": "File rows",
+                    "displayName": "File rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "table_rows",
+                    "title": "Table rows",
+                    "displayName": "Table rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "status",
+                    "title": "Status",
+                    "displayName": "Status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "loaded_at",
+                    "title": "Loaded at",
+                    "displayName": "Loaded at",
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Latest silver loads"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 2,
+            "height": 8
+          }
+        }
+      ]
+    }
+  ]
+}
