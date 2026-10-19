@@ -40,6 +40,12 @@ databricks bundle run nfip_pipeline      # about 5 to 10 minutes on serverless
 | `results_pricing_adequacy`, `results_entry_did`, `results_pricing_decision`, `results_pooled_summary` | Analysis outputs |
 | `results_c_power_design`, `results_c_class_placebo`, `results_e_experiment_power` | Placebo simulation outputs (computed locally) |
 
+Check the run against the local pipeline (gold row counts, load reconciliation, quality checks, and the headline estimates):
+
+```
+python databricks/verify.py
+```
+
 The analysis task also logs an MLflow run to the experiment `/Users/<you>/nfip-crs-measurement`, with the headline estimates as metrics and the result tables and figure as artifacts.
 
 ## Dashboard
