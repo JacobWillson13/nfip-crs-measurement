@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import numpy as np
-import pandas as pd
 import pytest
 
+# Skip before importing anything optional: the default CI job installs only [dev].
 pytest.importorskip("pyspark")
+np = pytest.importorskip("numpy")
+pd = pytest.importorskip("pandas")
 
 from pipeline.quality.checks import run_checks  # noqa: E402
 from pipeline.spark_sql import SILVER_TABLES, gold_statements, spark_checks, table_name, to_spark  # noqa: E402
