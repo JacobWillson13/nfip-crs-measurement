@@ -28,4 +28,4 @@ jobs:
           distribution: temurin
           java-version: "17"
       - run: pip install -e ".[dev,spark]"
-      - run: pytest -q tests/test_spark_parity.py
+      - run: pytest -q tests/test_spark_parity.py tests/test_dashboard_sql.py

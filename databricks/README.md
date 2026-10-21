@@ -60,10 +60,12 @@ Pages:
 
 | Page | What it shows |
 | --- | --- |
-| Overview | Headline counters (claims per class step, expected pricing gap, value of better data); claim frequency and paid losses by year, filterable by state |
-| Pricing decision | Losses above each class's discount, the probability each discount is too generous, and the full decision table |
-| Measurement designs | Detectable effect by design for the observational DiD and the proposed randomized trial |
-| Pipeline health | Quality check counts and results from the latest run, and silver load reconciliation |
+| Overview | The answer in one paragraph (numbers read from `analysis/results/`); loss cost per class step with its placebo-corrected interval, the expected pricing gap, and the value of better data; scheduled vs best-supported discount by class; a state map of CRS participation; paid losses and claim frequency by year, filterable by state, CRS class, and years |
+| Pricing decision | Each class's pooled loss cost with its 90% interval against the break-even discount, the probability each discount is too generous, and the decision table (net and absolute gap, value of information) |
+| Measurement designs | Detectable effect for the observational DiD (with the real number of entrants and a realistic effect marked), the placebo check that dropped the original design, and power for the proposed randomized trial |
+| Pipeline health | Days since the last run, check counts, quality checks with failures first and failing rows as a share of the table, check outcomes across runs, and silver load reconciliation |
+
+The state and CRS class filters are dataset parameters rather than field filters: the chart shows rates, which have to be recomputed in SQL after filtering. The interval chart on the Pricing decision page is a custom Vega-Lite widget; if a workspace does not support custom visualizations, `python databricks/build_dashboard.py --standard` swaps it for a standard bar chart. [tests/test_dashboard_sql.py](../tests/test_dashboard_sql.py) runs every dataset query on local Spark with its parameters bound.
 
 To change it, edit the SQL or the generator, then:
 
