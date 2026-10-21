@@ -320,71 +320,77 @@ def page(name: str, title: str, layout: list[dict]) -> dict:
     return {"name": name, "displayName": title, "pageType": "PAGE_TYPE_CANVAS", "layout": layout}
 
 
-def overview(f: dict) -> dict:
+def _names(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def overview(f: dict, vega_ok: bool) -> dict:
+    """The hero page: the answer, three numbers, and the one chart that shows it, above the fold
+    (rows 0 to 11); the filterable history sits below."""
     generous = [c for c in f["classes"] if c["p"] >= LIKELY]
-    called = "; ".join(f"Class {c['bin']} ({c['p']:.0%} probability), where current evidence supports "
-                       f"{_discount(c['best'])} instead of the scheduled {c['sched']:.0f}%" for c in generous)
-    lo, hi = f["claims_ci"]
+    head = "CRS flood discounts are right on average"
+    if generous:
+        head += f", but {_count(len(generous)).split()[0]} of {len(f['classes'])} classes get too much"
+    who = _names([f"Class {c['bin']}" for c in generous])
+    odds = _names([f"{c['p']:.0%}" for c in generous])
     return page("overview", "Overview", [
         text(f"""
-# Are FEMA's CRS flood insurance discounts priced right?
-**On average, yes. Class by class, {_count(len(generous))} look too generous, and the evidence is thin.**
-Comparing communities in the same county and year, so they faced the same storms, each CRS class step comes with
-{-f['claims_step']:.1f}% fewer claims ({_change(lo, hi).replace('lower', 'fewer')}) and {-f['loss_step']:.1f}% lower
-loss cost ({_change(*f['loss_ci'])}), against a scheduled discount of 5% per step. By class, the discount is likely
-too generous for {called}. Better data is worth more than re-pricing now: halving the uncertainty would cut the
-expected pricing gap by ${f['evsi_musd']:.0f}M a year.
+# {head}
+Comparing communities in the same county and year, so they faced the same storms, each CRS class step cuts loss
+cost {-f['loss_step']:.1f}% against a scheduled 5% discount. {who} {'is' if len(generous) == 1 else 'are'} likely
+over-discounted ({odds} probability). The evidence is thin, so better data is worth more than re-pricing:
+about ${f['evsi_musd']:.0f}M a year.
 
-335,000 NFIP community-years, 2010 to 2024. Intervals are 95% and placebo-corrected. Pipeline, methods, and caveats:
-[GitHub repo]({REPO_URL}).
+335,000 NFIP community-years, 2010 to 2024. [Pipeline, methods, and caveats on GitHub]({REPO_URL})
 """, pos(0, 0, 6, 3)),
         counter("headline", "MAX(`loss_cost_per_step_pct`)", "Loss cost per class step (%)", pos(0, 3, 2, 2),
                 f"95% interval {f['loss_ci'][0]:+.1f}% to {f['loss_ci'][1]:+.1f}%; the schedule assumes -5%",
                 plain(1)),
-        counter("headline", "MAX(`expected_abs_gap_usd`)", "Expected absolute pricing gap (per year)",
-                pos(2, 3, 2, 2), "Sum over classes of |premium at the scheduled discount - expected loss|", usd()),
-        counter("headline", "MAX(`evsi_usd`)", "Value of halving uncertainty (per year)", pos(4, 3, 2, 2),
+        counter("headline", "MAX(`expected_abs_gap_usd`)", "Expected pricing gap per year", pos(2, 3, 2, 2),
+                "Sum over classes of |premium at the scheduled discount - expected loss|", usd()),
+        counter("headline", "MAX(`evsi_usd`)", "Value of halving uncertainty per year", pos(4, 3, 2, 2),
                 "Expected cut in that gap from about twice the evidence", usd()),
-        chart("bar", "discount_compare", ("crs_class", "`crs_class`", "categorical", "CRS class"),
-              ("discount", "SUM(`discount_pct`)", "Discount (%)"), "Scheduled vs best-supported discount",
-              pos(0, 5, 3, 6), color=("discount_type", "`discount_type`", "Discount"), x_order=CLASSES,
-              grouped=True, color_map={"Scheduled": "#8A99A8", "Best on current evidence": "#2A78D6"},
-              description="Best discount minimizes the expected absolute gap; below zero is a surcharge. "
-                          "National model, not filtered.",
-              annotations=[hline(0)]),
+        _forest(vega_ok, pos(0, 5, 3, 7), hero=True),
         us_state_map("state_map", "state_name", ("crs_share", "SUM(`crs_share_pct`)", "In CRS (%)"),
-                     "Policies in CRS communities (%)", pos(3, 5, 3, 6),
-                     "Share of NFIP policy-years, 2022 to 2024. Not filtered."),
+                     "Policies in CRS communities (%)", pos(3, 5, 3, 7),
+                     "Share of NFIP policy-years, 2022 to 2024"),
         text("""
 ### Losses over time
 The filters apply to this chart only.
-""", pos(0, 11, 2, 2)),
-        multi_select("state", ("state_options", "state"), ["losses_by_year"], "State", pos(2, 11, 1, 2)),
+""", pos(0, 12, 2, 2)),
+        multi_select("state", ("state_options", "state"), ["losses_by_year"], "State", pos(2, 12, 1, 2)),
         multi_select("crs_group", ("crs_group_options", "crs_group"), ["losses_by_year"], "CRS class",
-                     pos(3, 11, 2, 2)),
-        range_slider("losses_by_year", "year", "Years", pos(5, 11, 1, 2)),
+                     pos(3, 12, 2, 2)),
+        range_slider("losses_by_year", "year", "Years", pos(5, 12, 1, 2)),
         combo("losses_by_year", ("year", "`year`", "Year"), ("paid", "SUM(`paid_busd`)", "Paid losses ($B)"),
               ("claims_per_1k", "SUM(`claims_per_1k_policy_years`)", "Claims per 1,000 policy-years"),
-              "Paid losses and claim frequency", pos(0, 13, 6, 6),
+              "Paid losses and claim frequency", pos(0, 14, 6, 6),
               "National peaks: 2012 (Sandy), 2017 (Harvey, Irma, Maria), 2024 (Helene, Milton); "
               "2022 losses are mostly Ian"),
     ])
 
 
-def _forest(vega_ok: bool, p: dict) -> dict:
-    title = "Loss cost by class against the break-even discount"
-    desc = ("Dot and bar: pooled estimate and 90% interval vs non-CRS neighbors. Tick: break-even at the "
-            "scheduled discount. A dot right of its tick means the class loses more than its discount assumes.")
+BLUE, CORAL = "#2A78D6", "#E8734A"
+
+
+def _forest(vega_ok: bool, p: dict, hero: bool = False) -> dict:
+    title = "Where each discount stands" if hero else "Loss cost by class against the break-even discount"
+    desc = ("Dot and bar: loss cost vs non-CRS neighbors in the same county and year, with 90% interval. "
+            "Tick: break-even at the scheduled discount. Coral: the discount is likely too generous "
+            f"({LIKELY:.0%} or more).")
     if not vega_ok:
         return chart("bar", "class_decision", ("crs_class", "`crs_class`", "categorical", "CRS class"),
                      ("above", "SUM(`losses_above_discount_pts`)", "Points"),
                      "Losses above discount (points)", p, x_order=CLASSES, annotations=[hline(0)],
                      description="Pooled loss cost vs non-CRS neighbors plus the scheduled discount; "
                                  "above zero, the class loses more than its discount assumes")
-    dot = "#2A78D6"
     ink = {"expr": "colors.textPrimary.default"}
-    x = {"type": "quantitative", "title": "Loss cost vs non-CRS neighbors (%)", "scale": {"domain": [-60, 70]}}
-    y = {"field": "crsClass", "type": "nominal", "sort": CLASSES, "title": None}
+    flag = f"datum.pTooGenerous >= {100 * LIKELY:.0f}"
+    color = {"condition": {"test": flag, "value": CORAL}, "value": BLUE}
+    x = {"type": "quantitative", "title": "Loss cost vs non-CRS neighbors (%)", "scale": {"domain": [-60, 100]},
+         "axis": {"values": [-50, -25, 0, 25, 50]}}
+    y = {"field": "crsClass", "type": "nominal", "sort": CLASSES, "title": None,
+         "axis": {"labelFontSize": 13, "labelPadding": 8}}
     tooltip = [{"field": "crsClass", "type": "nominal", "title": "Class"},
                {"field": "pooled", "type": "quantitative", "title": "Estimate (%)", "format": ".1f"},
                {"field": "low90", "type": "quantitative", "title": "90% low (%)", "format": ".1f"},
@@ -395,17 +401,24 @@ def _forest(vega_ok: bool, p: dict) -> dict:
         "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
         "data": {"name": "databricks_query"},
         "width": "container", "height": "container",
-        "config": {"autosize": {"type": "fit", "contains": "padding"}},
+        "config": {"autosize": {"type": "fit", "contains": "padding"}, "view": {"stroke": None}},
         "layer": [
             # zero line: no y encoding, so it spans the full height
             {"mark": {"type": "rule", "strokeDash": [3, 3], "opacity": 0.4, "color": ink},
              "encoding": {"x": {"datum": 0, **x}}},
-            {"mark": {"type": "rule", "strokeWidth": 3, "color": dot, "opacity": 0.6},
-             "encoding": {"y": y, "x": {"field": "low90", **x}, "x2": {"field": "high90"}}},
-            {"mark": {"type": "tick", "thickness": 3, "size": 28, "color": ink},
+            {"mark": {"type": "rule", "strokeWidth": 4, "opacity": 0.45, "strokeCap": "round"},
+             "encoding": {"y": y, "x": {"field": "low90", **x}, "x2": {"field": "high90"}, "color": color}},
+            {"mark": {"type": "tick", "thickness": 3, "size": 30, "color": ink},
              "encoding": {"y": y, "x": {"field": "breakEven", **x}, "tooltip": tooltip}},
-            {"mark": {"type": "point", "filled": True, "size": 140, "color": dot, "opacity": 1},
-             "encoding": {"y": y, "x": {"field": "pooled", **x}, "tooltip": tooltip}},
+            {"mark": {"type": "point", "filled": True, "size": 180, "opacity": 1},
+             "encoding": {"y": y, "x": {"field": "pooled", **x}, "color": color, "tooltip": tooltip}},
+            # label the classes that are likely over-discounted, just past the interval
+            {"transform": [{"filter": flag},
+                           {"calculate": "format(datum.pTooGenerous, '.0f') + '% likely too generous'",
+                            "as": "flagLabel"}],
+             "mark": {"type": "text", "align": "left", "dx": 10, "fontSize": 12, "fontWeight": "bold",
+                      "color": CORAL},
+             "encoding": {"y": y, "x": {"field": "high90", **x}, "text": {"field": "flagLabel"}}},
         ],
     }
     fields = {"crsClass": "`crs_class`", "pooled": "`pooled_loss_cost_effect_pct`", "low90": "`low90_pct`",
@@ -435,7 +448,12 @@ generous. It can disagree with the probability (Class 1-5 is {c15['p']:.0%} like
 ${f['abs_gap_musd']:.0f}M. Re-pricing on today's evidence barely shrinks it; better data (recovering historical CRS
 classes) is worth far more.
 """, pos(0, 0, 6, 3)),
-        _forest(vega_ok, pos(0, 3, 4, 6)),
+        chart("bar", "discount_compare", ("crs_class", "`crs_class`", "categorical", "CRS class"),
+              ("discount", "SUM(`discount_pct`)", "Discount (%)"), "Scheduled vs best-supported discount",
+              pos(0, 3, 4, 6), color=("discount_type", "`discount_type`", "Discount"), x_order=CLASSES,
+              grouped=True, color_map={"Scheduled": "#8A99A8", "Best on current evidence": BLUE},
+              description="Best discount minimizes the expected absolute gap; below zero is a surcharge",
+              annotations=[hline(0)]),
         chart("bar", "class_decision", ("crs_class", "`crs_class`", "categorical", "CRS class"),
               ("p", "SUM(`p_too_generous_pct`)", "Probability (%)"),
               "Probability the discount is too generous", pos(4, 3, 2, 6), x_order=CLASSES,
@@ -514,11 +532,23 @@ failure stops the job before the analysis runs; warnings are recorded for review
     ])
 
 
+# One palette for every page; the first color is the forest plot's blue, so default series match it.
+THEME = {
+    "canvasBackgroundColor": {"light": "#F6F7F9", "dark": "#12181D"},
+    "widgetBackgroundColor": {"light": "#FFFFFF", "dark": "#1B232A"},
+    "fontColor": {"light": "#1B232A", "dark": "#E8ECF0"},
+    "selectionColor": {"light": "#2272B4", "dark": "#8ACAFF"},
+    "visualizationColors": [BLUE, CORAL, "#3B9C7A", "#8A99A8", "#E8A33D", "#7B5EA7", "#5AB4C5"],
+    "widgetHeaderAlignment": "LEFT",
+}
+
+
 def build(vega_ok: bool = True) -> dict:
     global _n
     _n = 0
     f = facts()
-    return {"datasets": datasets(), "pages": [overview(f), pricing(f, vega_ok), designs(f), health()]}
+    return {"datasets": datasets(), "pages": [overview(f, vega_ok), pricing(f, vega_ok), designs(f), health()],
+            "uiSettings": {"theme": THEME}}
 
 
 def main() -> None:

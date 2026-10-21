@@ -1,5 +1,7 @@
 # NFIP CRS Measurement
 
+![Overview page of the NFIP CRS measurement dashboard on Databricks](databricks/screenshots/overview.png)
+
 **Business question:** FEMA's Community Rating System (CRS) gives flood insurance discounts of 5% to 45% to communities that invest in floodplain management. Are those discounts in line with the loss reduction they actually buy, and how confident can we be?
 
 **Answer so far:** within the same county and year, each CRS class step is associated with about 5% fewer claims per policy-year (95% CI: 1.6% to 8.5%, placebo-calibrated) and about 6% lower loss cost (95% CI: 12.7% lower to 1.4% higher), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured with public data: placebo tests show even the best available design can only detect a drop of about 50% in claims. Turned into a decision: re-pricing on today's evidence would barely reduce expected pricing error, while halving the uncertainty is worth about $96M a year, so better data is the high-value move; the Class 7 and 9 discounts are the most likely to be too generous. Details in [analysis/RESULTS.md](analysis/RESULTS.md).

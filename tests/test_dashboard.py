@@ -102,7 +102,8 @@ def test_custom_charts_bind_their_fields():
         assert vl["data"] == {"name": "databricks_query"}
         bound = {f["fieldName"] for f in s["encodings"]["fields"]}
         assert bound == {f["name"] for f in item["widget"]["queries"][0]["query"]["fields"]}
-        used = set(re.findall(r'"field": "(\w+)"', s["jsonSpec"]["spec"]))
+        made = set(re.findall(r'"as": "(\w+)"', s["jsonSpec"]["spec"]))   # computed by Vega-Lite transforms
+        used = set(re.findall(r'"field": "(\w+)"', s["jsonSpec"]["spec"])) - made
         assert used <= bound, used - bound
 
 
@@ -135,10 +136,18 @@ def test_layout_fits_grid_without_overlaps():
 def test_prose_numbers_come_from_committed_results():
     f = bd.facts()
     md = "".join(next(item for _, item in _widgets(bd.build()))["widget"]["multilineTextboxSpec"]["lines"])
-    assert f"{-f['claims_step']:.1f}% fewer claims" in md
+    assert f"cost {-f['loss_step']:.1f}% against" in md
     assert f"${f['evsi_musd']:.0f}M a year" in md
     for c in f["classes"]:
-        assert (f"Class {c['bin']} (" in md) == (c["p"] >= bd.LIKELY)
+        assert (f"{c['p']:.0%}" in md) == (c["p"] >= bd.LIKELY), c["bin"]
+
+
+def test_hero_fits_above_the_fold():
+    """The overview is the README hero image: answer, counters, and the forest plot within 12 rows."""
+    first = bd.build()["pages"][0]
+    kinds = {item["widget"].get("spec", {}).get("widgetType") for item in first["layout"]
+             if item["position"]["y"] + item["position"]["height"] <= 12}
+    assert {"counter", "custom-vega-viz", "choropleth-map"} <= kinds
 
 
 def test_failure_shares_cover_row_level_checks_only():

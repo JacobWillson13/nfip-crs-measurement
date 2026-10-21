@@ -261,16 +261,13 @@
             "name": "text_01",
             "multilineTextboxSpec": {
               "lines": [
-                "# Are FEMA's CRS flood insurance discounts priced right?\n",
-                "**On average, yes. Class by class, two discounts look too generous, and the evidence is thin.**\n",
-                "Comparing communities in the same county and year, so they faced the same storms, each CRS class step comes with\n",
-                "5.1% fewer claims (1.6% to 8.5% fewer) and 5.9% lower\n",
-                "loss cost (12.7% lower to 1.4% higher), against a scheduled discount of 5% per step. By class, the discount is likely\n",
-                "too generous for Class 7 (85% probability), where current evidence supports a 2% discount instead of the scheduled 15%; Class 9 (94% probability), where current evidence supports a 15% surcharge instead of the scheduled 5%. Better data is worth more than re-pricing now: halving the uncertainty would cut the\n",
-                "expected pricing gap by $96M a year.\n",
+                "# CRS flood discounts are right on average, but two of 5 classes get too much\n",
+                "Comparing communities in the same county and year, so they faced the same storms, each CRS class step cuts loss\n",
+                "cost 5.9% against a scheduled 5% discount. Class 7 and Class 9 are likely\n",
+                "over-discounted (85% and 94% probability). The evidence is thin, so better data is worth more than re-pricing:\n",
+                "about $96M a year.\n",
                 "\n",
-                "335,000 NFIP community-years, 2010 to 2024. Intervals are 95% and placebo-corrected. Pipeline, methods, and caveats:\n",
-                "[GitHub repo](https://github.com/JacobWillson13/nfip-crs-measurement)."
+                "335,000 NFIP community-years, 2010 to 2024. [Pipeline, methods, and caveats on GitHub](https://github.com/JacobWillson13/nfip-crs-measurement)"
               ]
             }
           },
@@ -355,7 +352,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "value",
-                  "displayName": "Expected absolute pricing gap (per year)",
+                  "displayName": "Expected pricing gap per year",
                   "format": {
                     "type": "number-currency",
                     "currencyCode": "USD",
@@ -369,7 +366,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Expected absolute pricing gap (per year)",
+                "title": "Expected pricing gap per year",
                 "showDescription": true,
                 "description": "Sum over classes of |premium at the scheduled discount - expected loss|"
               }
@@ -406,7 +403,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "value",
-                  "displayName": "Value of halving uncertainty (per year)",
+                  "displayName": "Value of halving uncertainty per year",
                   "format": {
                     "type": "number-currency",
                     "currencyCode": "USD",
@@ -420,7 +417,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Value of halving uncertainty (per year)",
+                "title": "Value of halving uncertainty per year",
                 "showDescription": true,
                 "description": "Expected cut in that gap from about twice the evidence"
               }
@@ -435,7 +432,453 @@
         },
         {
           "widget": {
-            "name": "bar_05",
+            "name": "custom_05",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "crsClass",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "pooled",
+                      "expression": "`pooled_loss_cost_effect_pct`"
+                    },
+                    {
+                      "name": "low90",
+                      "expression": "`low90_pct`"
+                    },
+                    {
+                      "name": "high90",
+                      "expression": "`high90_pct`"
+                    },
+                    {
+                      "name": "breakEven",
+                      "expression": "`break_even_pct`"
+                    },
+                    {
+                      "name": "pTooGenerous",
+                      "expression": "`p_too_generous_pct`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "custom-vega-viz",
+              "data": {
+                "queryName": "main_query"
+              },
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "crsClass"
+                  },
+                  {
+                    "fieldName": "pooled"
+                  },
+                  {
+                    "fieldName": "low90"
+                  },
+                  {
+                    "fieldName": "high90"
+                  },
+                  {
+                    "fieldName": "breakEven"
+                  },
+                  {
+                    "fieldName": "pTooGenerous"
+                  }
+                ]
+              },
+              "jsonSpec": {
+                "type": "vega-lite",
+                "spec": "{\"$schema\": \"https://vega.github.io/schema/vega-lite/v6.json\", \"data\": {\"name\": \"databricks_query\"}, \"width\": \"container\", \"height\": \"container\", \"config\": {\"autosize\": {\"type\": \"fit\", \"contains\": \"padding\"}, \"view\": {\"stroke\": null}}, \"layer\": [{\"mark\": {\"type\": \"rule\", \"strokeDash\": [3, 3], \"opacity\": 0.4, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"x\": {\"datum\": 0, \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}}}, {\"mark\": {\"type\": \"rule\", \"strokeWidth\": 4, \"opacity\": 0.45, \"strokeCap\": \"round\"}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"x2\": {\"field\": \"high90\"}, \"color\": {\"condition\": {\"test\": \"datum.pTooGenerous >= 80\", \"value\": \"#E8734A\"}, \"value\": \"#2A78D6\"}}}, {\"mark\": {\"type\": \"tick\", \"thickness\": 3, \"size\": 30, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}, {\"mark\": {\"type\": \"point\", \"filled\": true, \"size\": 180, \"opacity\": 1}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"color\": {\"condition\": {\"test\": \"datum.pTooGenerous >= 80\", \"value\": \"#E8734A\"}, \"value\": \"#2A78D6\"}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}, {\"transform\": [{\"filter\": \"datum.pTooGenerous >= 80\"}, {\"calculate\": \"format(datum.pTooGenerous, '.0f') + '% likely too generous'\", \"as\": \"flagLabel\"}], \"mark\": {\"type\": \"text\", \"align\": \"left\", \"dx\": 10, \"fontSize\": 12, \"fontWeight\": \"bold\", \"color\": \"#E8734A\"}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"text\": {\"field\": \"flagLabel\"}}}]}"
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Where each discount stands",
+                "showDescription": true,
+                "description": "Dot and bar: loss cost vs non-CRS neighbors in the same county and year, with 90% interval. Tick: break-even at the scheduled discount. Coral: the discount is likely too generous (80% or more)."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "map_06",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "state_map",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "state_name",
+                      "expression": "`state_name`"
+                    },
+                    {
+                      "name": "crs_share",
+                      "expression": "SUM(`crs_share_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "choropleth-map",
+              "encodings": {
+                "region": {
+                  "regionType": "mapbox-v4-admin",
+                  "admin0": {
+                    "type": "value",
+                    "value": "United States",
+                    "geographicRole": "admin0-name"
+                  },
+                  "admin1": {
+                    "fieldName": "state_name",
+                    "type": "field",
+                    "geographicRole": "admin1-name"
+                  }
+                },
+                "color": {
+                  "fieldName": "crs_share",
+                  "displayName": "In CRS (%)",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "custom-sequential",
+                      "colors": {
+                        "start": "#DCEBF7",
+                        "end": "#0B4F8A"
+                      }
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Policies in CRS communities (%)",
+                "showDescription": true,
+                "description": "Share of NFIP policy-years, 2022 to 2024"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 5,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "text_07",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Losses over time\n",
+                "The filters apply to this chart only."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_08",
+            "queries": [
+              {
+                "name": "values_state",
+                "query": {
+                  "datasetName": "state_options",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "state",
+                      "expression": "`state`"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "param_state_losses_by_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "parameters": [
+                    {
+                      "name": "state",
+                      "keyword": "state"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "state",
+                    "displayName": "State",
+                    "queryName": "values_state"
+                  },
+                  {
+                    "parameterName": "state",
+                    "queryName": "param_state_losses_by_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "State"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 12,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_09",
+            "queries": [
+              {
+                "name": "values_crs_group",
+                "query": {
+                  "datasetName": "crs_group_options",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_group",
+                      "expression": "`crs_group`"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "param_crs_group_losses_by_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "parameters": [
+                    {
+                      "name": "crs_group",
+                      "keyword": "crs_group"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "crs_group",
+                    "displayName": "CRS class",
+                    "queryName": "values_crs_group"
+                  },
+                  {
+                    "parameterName": "crs_group",
+                    "queryName": "param_crs_group_losses_by_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "CRS class"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 12,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_10",
+            "queries": [
+              {
+                "name": "range_losses_by_year_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "min(year)",
+                      "expression": "MIN(`year`)"
+                    },
+                    {
+                      "name": "max(year)",
+                      "expression": "MAX(`year`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "range-slider",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "year",
+                    "queryName": "range_losses_by_year_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Years"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 12,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "combo_11",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "paid",
+                      "expression": "SUM(`paid_busd`)"
+                    },
+                    {
+                      "name": "claims_per_1k",
+                      "expression": "SUM(`claims_per_1k_policy_years`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "year",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Year",
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "paid",
+                        "displayName": "Paid losses ($B)"
+                      }
+                    ]
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "claims_per_1k",
+                        "displayName": "Claims per 1,000 policy-years"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Paid losses and claim frequency",
+                "showDescription": true,
+                "description": "National peaks: 2012 (Sandy), 2017 (Harvey, Irma, Maria), 2024 (Helene, Milton); 2022 losses are mostly Ian"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "pricing",
+      "displayName": "Pricing decision",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_12",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pricing decision by CRS class\n",
+                "Class relativities are partially pooled in a Bayesian hierarchical model, with uncertainty widened by placebo\n",
+                "tests. **Net gap** is premium at the scheduled discount minus expected loss: negative means the discount is too\n",
+                "generous. It can disagree with the probability (Class 1-5 is 52% likely too generous yet\n",
+                "+$23.9M net) because the loss estimate is skewed. **Abs. gap** sums to the overview's\n",
+                "$364M. Re-pricing on today's evidence barely shrinks it; better data (recovering historical CRS\n",
+                "classes) is worth far more."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_13",
             "queries": [
               {
                 "name": "main_query",
@@ -518,7 +961,7 @@
                 "showTitle": true,
                 "title": "Scheduled vs best-supported discount",
                 "showDescription": true,
-                "description": "Best discount minimizes the expected absolute gap; below zero is a surcharge. National model, not filtered."
+                "description": "Best discount minimizes the expected absolute gap; below zero is a surcharge"
               },
               "mark": {
                 "layout": "group"
@@ -534,452 +977,6 @@
                   }
                 }
               ]
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 5,
-            "width": 3,
-            "height": 6
-          }
-        },
-        {
-          "widget": {
-            "name": "map_06",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "state_map",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "state_name",
-                      "expression": "`state_name`"
-                    },
-                    {
-                      "name": "crs_share",
-                      "expression": "SUM(`crs_share_pct`)"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "choropleth-map",
-              "encodings": {
-                "region": {
-                  "regionType": "mapbox-v4-admin",
-                  "admin0": {
-                    "type": "value",
-                    "value": "United States",
-                    "geographicRole": "admin0-name"
-                  },
-                  "admin1": {
-                    "fieldName": "state_name",
-                    "type": "field",
-                    "geographicRole": "admin1-name"
-                  }
-                },
-                "color": {
-                  "fieldName": "crs_share",
-                  "displayName": "In CRS (%)",
-                  "scale": {
-                    "type": "quantitative",
-                    "colorRamp": {
-                      "mode": "custom-sequential",
-                      "colors": {
-                        "start": "#DCEBF7",
-                        "end": "#0B4F8A"
-                      }
-                    }
-                  }
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "Policies in CRS communities (%)",
-                "showDescription": true,
-                "description": "Share of NFIP policy-years, 2022 to 2024. Not filtered."
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 5,
-            "width": 3,
-            "height": 6
-          }
-        },
-        {
-          "widget": {
-            "name": "text_07",
-            "multilineTextboxSpec": {
-              "lines": [
-                "### Losses over time\n",
-                "The filters apply to this chart only."
-              ]
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 11,
-            "width": 2,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "filter_08",
-            "queries": [
-              {
-                "name": "values_state",
-                "query": {
-                  "datasetName": "state_options",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "state",
-                      "expression": "`state`"
-                    }
-                  ]
-                }
-              },
-              {
-                "name": "param_state_losses_by_year",
-                "query": {
-                  "datasetName": "losses_by_year",
-                  "disaggregated": false,
-                  "parameters": [
-                    {
-                      "name": "state",
-                      "keyword": "state"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "filter-multi-select",
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "state",
-                    "displayName": "State",
-                    "queryName": "values_state"
-                  },
-                  {
-                    "parameterName": "state",
-                    "queryName": "param_state_losses_by_year"
-                  }
-                ]
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "State"
-              }
-            }
-          },
-          "position": {
-            "x": 2,
-            "y": 11,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "filter_09",
-            "queries": [
-              {
-                "name": "values_crs_group",
-                "query": {
-                  "datasetName": "crs_group_options",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "crs_group",
-                      "expression": "`crs_group`"
-                    }
-                  ]
-                }
-              },
-              {
-                "name": "param_crs_group_losses_by_year",
-                "query": {
-                  "datasetName": "losses_by_year",
-                  "disaggregated": false,
-                  "parameters": [
-                    {
-                      "name": "crs_group",
-                      "keyword": "crs_group"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "filter-multi-select",
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "crs_group",
-                    "displayName": "CRS class",
-                    "queryName": "values_crs_group"
-                  },
-                  {
-                    "parameterName": "crs_group",
-                    "queryName": "param_crs_group_losses_by_year"
-                  }
-                ]
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "CRS class"
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 11,
-            "width": 2,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "filter_10",
-            "queries": [
-              {
-                "name": "range_losses_by_year_year",
-                "query": {
-                  "datasetName": "losses_by_year",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "min(year)",
-                      "expression": "MIN(`year`)"
-                    },
-                    {
-                      "name": "max(year)",
-                      "expression": "MAX(`year`)"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "range-slider",
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "year",
-                    "queryName": "range_losses_by_year_year"
-                  }
-                ]
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "Years"
-              }
-            }
-          },
-          "position": {
-            "x": 5,
-            "y": 11,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "combo_11",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "losses_by_year",
-                  "disaggregated": false,
-                  "fields": [
-                    {
-                      "name": "year",
-                      "expression": "`year`"
-                    },
-                    {
-                      "name": "paid",
-                      "expression": "SUM(`paid_busd`)"
-                    },
-                    {
-                      "name": "claims_per_1k",
-                      "expression": "SUM(`claims_per_1k_policy_years`)"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "combo",
-              "encodings": {
-                "x": {
-                  "fieldName": "year",
-                  "scale": {
-                    "type": "categorical"
-                  },
-                  "displayName": "Year",
-                  "axis": {
-                    "title": "Year"
-                  }
-                },
-                "y": {
-                  "scale": {
-                    "type": "quantitative"
-                  },
-                  "primary": {
-                    "fields": [
-                      {
-                        "fieldName": "paid",
-                        "displayName": "Paid losses ($B)"
-                      }
-                    ]
-                  },
-                  "secondary": {
-                    "fields": [
-                      {
-                        "fieldName": "claims_per_1k",
-                        "displayName": "Claims per 1,000 policy-years"
-                      }
-                    ]
-                  }
-                },
-                "label": {
-                  "show": false
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "Paid losses and claim frequency",
-                "showDescription": true,
-                "description": "National peaks: 2012 (Sandy), 2017 (Harvey, Irma, Maria), 2024 (Helene, Milton); 2022 losses are mostly Ian"
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 13,
-            "width": 6,
-            "height": 6
-          }
-        }
-      ]
-    },
-    {
-      "name": "pricing",
-      "displayName": "Pricing decision",
-      "pageType": "PAGE_TYPE_CANVAS",
-      "layout": [
-        {
-          "widget": {
-            "name": "text_12",
-            "multilineTextboxSpec": {
-              "lines": [
-                "## Pricing decision by CRS class\n",
-                "Class relativities are partially pooled in a Bayesian hierarchical model, with uncertainty widened by placebo\n",
-                "tests. **Net gap** is premium at the scheduled discount minus expected loss: negative means the discount is too\n",
-                "generous. It can disagree with the probability (Class 1-5 is 52% likely too generous yet\n",
-                "+$23.9M net) because the loss estimate is skewed. **Abs. gap** sums to the overview's\n",
-                "$364M. Re-pricing on today's evidence barely shrinks it; better data (recovering historical CRS\n",
-                "classes) is worth far more."
-              ]
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 0,
-            "width": 6,
-            "height": 3
-          }
-        },
-        {
-          "widget": {
-            "name": "custom_13",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "class_decision",
-                  "disaggregated": true,
-                  "fields": [
-                    {
-                      "name": "crsClass",
-                      "expression": "`crs_class`"
-                    },
-                    {
-                      "name": "pooled",
-                      "expression": "`pooled_loss_cost_effect_pct`"
-                    },
-                    {
-                      "name": "low90",
-                      "expression": "`low90_pct`"
-                    },
-                    {
-                      "name": "high90",
-                      "expression": "`high90_pct`"
-                    },
-                    {
-                      "name": "breakEven",
-                      "expression": "`break_even_pct`"
-                    },
-                    {
-                      "name": "pTooGenerous",
-                      "expression": "`p_too_generous_pct`"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "custom-vega-viz",
-              "data": {
-                "queryName": "main_query"
-              },
-              "encodings": {
-                "fields": [
-                  {
-                    "fieldName": "crsClass"
-                  },
-                  {
-                    "fieldName": "pooled"
-                  },
-                  {
-                    "fieldName": "low90"
-                  },
-                  {
-                    "fieldName": "high90"
-                  },
-                  {
-                    "fieldName": "breakEven"
-                  },
-                  {
-                    "fieldName": "pTooGenerous"
-                  }
-                ]
-              },
-              "jsonSpec": {
-                "type": "vega-lite",
-                "spec": "{\"$schema\": \"https://vega.github.io/schema/vega-lite/v6.json\", \"data\": {\"name\": \"databricks_query\"}, \"width\": \"container\", \"height\": \"container\", \"config\": {\"autosize\": {\"type\": \"fit\", \"contains\": \"padding\"}}, \"layer\": [{\"mark\": {\"type\": \"rule\", \"strokeDash\": [3, 3], \"opacity\": 0.4, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"x\": {\"datum\": 0, \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 70]}}}}, {\"mark\": {\"type\": \"rule\", \"strokeWidth\": 3, \"color\": \"#2A78D6\", \"opacity\": 0.6}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null}, \"x\": {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 70]}}, \"x2\": {\"field\": \"high90\"}}}, {\"mark\": {\"type\": \"tick\", \"thickness\": 3, \"size\": 28, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null}, \"x\": {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 70]}}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}, {\"mark\": {\"type\": \"point\", \"filled\": true, \"size\": 140, \"color\": \"#2A78D6\", \"opacity\": 1}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null}, \"x\": {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 70]}}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}]}"
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "Loss cost by class against the break-even discount",
-                "showDescription": true,
-                "description": "Dot and bar: pooled estimate and 90% interval vs non-CRS neighbors. Tick: break-even at the scheduled discount. A dot right of its tick means the class loses more than its discount assumes."
-              }
             }
           },
           "position": {
@@ -2878,5 +2875,35 @@
         }
       ]
     }
-  ]
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#F6F7F9",
+        "dark": "#12181D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#1B232A"
+      },
+      "fontColor": {
+        "light": "#1B232A",
+        "dark": "#E8ECF0"
+      },
+      "selectionColor": {
+        "light": "#2272B4",
+        "dark": "#8ACAFF"
+      },
+      "visualizationColors": [
+        "#2A78D6",
+        "#E8734A",
+        "#3B9C7A",
+        "#8A99A8",
+        "#E8A33D",
+        "#7B5EA7",
+        "#5AB4C5"
+      ],
+      "widgetHeaderAlignment": "LEFT"
+    }
+  }
 }
