@@ -123,7 +123,8 @@ def _change(lo: float, hi: float) -> str:
 
 
 def _count(n: int) -> str:
-    words = {0: "no discounts", 1: "one discount", 2: "two discounts", 3: "three discounts", 4: "four discounts"}
+    words = {0: "no discounts", 1: "one discount", 2: "two discounts", 3: "three discounts", 4: "four discounts",
+             5: "five discounts"}
     return words.get(n, f"{n} discounts")
 
 
@@ -172,11 +173,14 @@ def usd() -> dict:
             "decimalPlaces": {"type": "max", "places": 1}}
 
 
-def counter(dataset: str, expr: str, title: str, p: dict, description: str = "", fmt: dict | None = None) -> dict:
+def counter(dataset: str, expr: str, title: str, p: dict, description: str = "", fmt: dict | None = None,
+            unit: str = "") -> dict:
     field = "value"
     value = {"fieldName": field, "displayName": title}
     if fmt:
         value["format"] = fmt
+    if unit:
+        value["formatTemplate"] = "{{ @formatted }}" + unit
     return {"widget": {"name": _name("counter"), "queries": [_query(dataset, {field: expr}, False)],
                        "spec": {"version": 2, "widgetType": "counter", "encodings": {"value": value},
                                 "frame": _frame(title, description)}},
@@ -197,14 +201,20 @@ def vline(x: int, label: str) -> dict:
 
 def chart(kind: str, dataset: str, x: tuple[str, str, str, str], y: tuple[str, str, str], title: str, p: dict,
           color: tuple[str, str, str] | None = None, description: str = "", annotations: list | None = None,
-          x_order: list[str] | None = None, grouped: bool = False, color_map: dict[str, str] | None = None) -> dict:
+          x_order: list[str] | None = None, grouped: bool = False, color_map: dict[str, str] | None = None,
+          x_min: float | None = None, y_min: float | None = None) -> dict:
     """kind: line or bar. x = (field, expression, scale type, axis title); y and color = (field, expression, title)."""
     fields = {x[0]: x[1], y[0]: y[1]}
     xscale = {"type": x[2]}
     if x_order:
         xscale["sort"] = {"by": "custom-order", "orderedValues": x_order}
+    if x_min is not None:
+        xscale["domain"] = {"min": x_min}
+    yscale = {"type": "quantitative"}
+    if y_min is not None:
+        yscale["domain"] = {"min": y_min}
     enc = {"x": {"fieldName": x[0], "scale": xscale, "displayName": x[3], "axis": {"title": x[3]}},
-           "y": {"fieldName": y[0], "scale": {"type": "quantitative"}, "displayName": y[2], "axis": {"title": y[2]}},
+           "y": {"fieldName": y[0], "scale": yscale, "displayName": y[2], "axis": {"title": y[2]}},
            "label": {"show": kind == "bar"}}
     if color:
         fields[color[0]] = color[1]
@@ -330,7 +340,8 @@ def overview(f: dict, vega_ok: bool) -> dict:
     generous = [c for c in f["classes"] if c["p"] >= LIKELY]
     head = "CRS flood discounts are right on average"
     if generous:
-        head += f", but {_count(len(generous)).split()[0]} of {len(f['classes'])} classes get too much"
+        n, total = (_count(k).split()[0] for k in (len(generous), len(f["classes"])))
+        head += f", but {n} of {total} classes get too much"
     who = _names([f"Class {c['bin']}" for c in generous])
     odds = _names([f"{c['p']:.0%}" for c in generous])
     return page("overview", "Overview", [
@@ -343,9 +354,9 @@ about ${f['evsi_musd']:.0f}M a year.
 
 335,000 NFIP community-years, 2010 to 2024. [Pipeline, methods, and caveats on GitHub]({REPO_URL})
 """, pos(0, 0, 6, 3)),
-        counter("headline", "MAX(`loss_cost_per_step_pct`)", "Loss cost per class step (%)", pos(0, 3, 2, 2),
+        counter("headline", "MAX(`loss_cost_per_step_pct`)", "Loss cost per class step", pos(0, 3, 2, 2),
                 f"95% interval {f['loss_ci'][0]:+.1f}% to {f['loss_ci'][1]:+.1f}%; the schedule assumes -5%",
-                plain(1)),
+                plain(1), unit="%"),
         counter("headline", "MAX(`expected_abs_gap_usd`)", "Expected pricing gap per year", pos(2, 3, 2, 2),
                 "Sum over classes of |premium at the scheduled discount - expected loss|", usd()),
         counter("headline", "MAX(`evsi_usd`)", "Value of halving uncertainty per year", pos(4, 3, 2, 2),
@@ -447,18 +458,18 @@ generous. It can disagree with the probability (Class 1-5 is {c15['p']:.0%} like
 {net15} net) because the loss estimate is skewed. **Abs. gap** sums to the overview's
 ${f['abs_gap_musd']:.0f}M. Re-pricing on today's evidence barely shrinks it; better data (recovering historical CRS
 classes) is worth far more.
-""", pos(0, 0, 6, 3)),
+""", pos(0, 0, 6, 2)),
         chart("bar", "discount_compare", ("crs_class", "`crs_class`", "categorical", "CRS class"),
               ("discount", "SUM(`discount_pct`)", "Discount (%)"), "Scheduled vs best-supported discount",
-              pos(0, 3, 4, 6), color=("discount_type", "`discount_type`", "Discount"), x_order=CLASSES,
+              pos(0, 2, 4, 6), color=("discount_type", "`discount_type`", "Discount"), x_order=CLASSES,
               grouped=True, color_map={"Scheduled": "#8A99A8", "Best on current evidence": BLUE},
               description="Best discount minimizes the expected absolute gap; below zero is a surcharge",
               annotations=[hline(0)]),
         chart("bar", "class_decision", ("crs_class", "`crs_class`", "categorical", "CRS class"),
               ("p", "SUM(`p_too_generous_pct`)", "Probability (%)"),
-              "Probability the discount is too generous", pos(4, 3, 2, 6), x_order=CLASSES,
+              "Probability the discount is too generous", pos(4, 2, 2, 6), x_order=CLASSES,
               annotations=[hline(50, "Coin flip")]),
-        table("class_decision", cols, "Decision table", pos(0, 9, 6, 5),
+        table("class_decision", cols, "Decision table", pos(0, 8, 6, 5),
               "Dollars are expected annual loss at 2022 to 2024 exposure and 2010 to 2024 loss cost"),
     ])
 
@@ -478,19 +489,20 @@ outreach raises participation, but not a realistic effect on claims.
               "Observational design: detectable effect", pos(0, 2, 3, 7),
               color=("design_outcome", "`design_outcome`", "Outcome"),
               description="Joining CRS usually starts at Class 9 or 8, a 5 to 10% discount",
-              annotations=[hline(10, "10%: a Class 8 discount"), vline(f["entrants"], f"{f['entrants']} actual")]),
+              annotations=[hline(10, "10%: a Class 8 discount"), vline(f["entrants"], f"{f['entrants']} actual")],
+              x_min=0, y_min=0),
         chart("line", "experiment_power", ("communities", "`communities`", "quantitative", "Communities in the trial"),
               ("itt", "AVG(`itt_mde_pct`)", "Detectable drop from the offer (%)"),
               "Randomized trial: detectable drop in claims", pos(3, 2, 3, 7),
               color=("design", "`design`", "Design"),
               description="Realistic offer effect: 25% uptake x 20% fewer claims among joiners = 5%",
-              annotations=[hline(5, "5%: realistic offer effect")]),
+              annotations=[hline(5, "5%: realistic offer effect")], y_min=0),
         table("entry_design_check", [("design", "Design", "string"), ("outcome", "Outcome", "string"),
                                      ("bias_under_no_effect_pct", "Estimate with no true effect (%)", "float"),
                                      ("false_positive_rate_pct", "False positives at reported SEs (%)", "float", "0"),
                                      ("mde_pct", "Detectable effect (%)", "float"),
                                      ("verdict", "Verdict", "string")],
-              f"Design check at the {f['entrants']} actual entrants", pos(0, 9, 6, 3),
+              f"Design check at the {f['entrants']} actual entrants", pos(0, 9, 6, 4),
               "Placebo entry dates given to communities that never joined: a sound design reports about 0%. "
               "Reported standard errors still overstate significance, so detectable effects use the placebo spread."),
         table("experiment_power", [("design", "Design", "string"), ("trial_size", "Size", "string"),
@@ -498,7 +510,7 @@ outreach raises participation, but not a realistic effect on claims.
                                    ("itt_mde_label", "Offer effect detectable (%)", "string"),
                                    ("complier_p50_label", "Joining effect, 50% uptake (%)", "string"),
                                    ("complier_p25_label", "Joining effect, 25% uptake (%)", "string")],
-              "Trial power", pos(0, 12, 6, 5), "Drops of 90% or more are shown as not detectable"),
+              "Trial power", pos(0, 13, 6, 7), "Drops of 90% or more are shown as not detectable"),
     ])
 
 
@@ -511,7 +523,7 @@ code as the local DuckDB pipeline (a CI test runs both on Spark and DuckDB and c
 failure stops the job before the analysis runs; warnings are recorded for review.
 """, pos(0, 0, 6, 2)),
         counter("pipeline_health", "MAX(`days_since_run`)", "Days since last run", pos(0, 2, 1, 2),
-                "The job is scheduled monthly (paused in development mode)", plain(1)),
+                "Scheduled monthly", plain(1)),
         counter("pipeline_health", "COUNT(`check_name`)", "Checks run", pos(1, 2, 1, 2)),
         counter("pipeline_health", "SUM(`passed_flag`)", "Checks passed", pos(2, 2, 1, 2)),
         counter("pipeline_health", "SUM(`warning`)", "Warnings", pos(3, 2, 1, 2)),
@@ -520,9 +532,9 @@ failure stops the job before the analysis runs; warnings are recorded for review
         table("pipeline_health", [("check_name", "Check", "string"), ("layer", "Layer", "string"),
                                   ("severity", "Severity", "string"), ("status", "Status", "string"),
                                   ("failing_rows", "Failing rows", "integer"),
-                                  ("failing_share_pct", "Share of table (%)", "float", "0.00")],
+                                  ("failing_share_label", "Share of table (%)", "string")],
               "Quality checks, latest run", pos(0, 4, 4, 8),
-              "Failures first. Share is blank for checks that compare totals or count groups."),
+              "Failures first. Share is n/a for checks that compare totals or count groups."),
         chart("bar", "dq_history", ("run", "`run`", "categorical", "Run"), ("checks", "SUM(`checks`)", "Checks"),
               "Check outcomes by run", pos(4, 4, 2, 8), color=("status", "`status`", "Status"),
               color_map={"Passed": "#3B9C7A", "Warning": "#E8A33D", "Blocking": "#E2574C"}),

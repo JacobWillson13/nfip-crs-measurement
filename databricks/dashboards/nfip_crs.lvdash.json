@@ -216,6 +216,9 @@
         "select l.check_name, l.layer, l.severity, l.failing_rows,\n",
         "       case when l.passed then 'Passed' when l.severity = 'error' then 'Blocking' else 'Warning' end as status,\n",
         "       round(100 * l.failing_rows / c.n, 2)                       as failing_share_pct,\n",
+        "       case when c.n is null then 'n/a'\n",
+        "            when l.failing_rows > 0 and 100 * l.failing_rows / c.n < 0.01 then '<0.01'\n",
+        "            else format_number(100 * l.failing_rows / c.n, 2) end  as failing_share_label,\n",
         "       case when l.passed then 1 else 0 end                       as passed_flag,\n",
         "       case when l.passed then 0 when l.severity = 'error' then 1 else 0 end as blocking,\n",
         "       case when not l.passed and l.severity = 'warn' then 1 else 0 end      as warning,\n",
@@ -261,7 +264,7 @@
             "name": "text_01",
             "multilineTextboxSpec": {
               "lines": [
-                "# CRS flood discounts are right on average, but two of 5 classes get too much\n",
+                "# CRS flood discounts are right on average, but two of five classes get too much\n",
                 "Comparing communities in the same county and year, so they faced the same storms, each CRS class step cuts loss\n",
                 "cost 5.9% against a scheduled 5% discount. Class 7 and Class 9 are likely\n",
                 "over-discounted (85% and 94% probability). The evidence is thin, so better data is worth more than re-pricing:\n",
@@ -302,7 +305,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "value",
-                  "displayName": "Loss cost per class step (%)",
+                  "displayName": "Loss cost per class step",
                   "format": {
                     "type": "number-plain",
                     "abbreviation": "none",
@@ -310,12 +313,13 @@
                       "type": "max",
                       "places": 1
                     }
-                  }
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Loss cost per class step (%)",
+                "title": "Loss cost per class step",
                 "showDescription": true,
                 "description": "95% interval -12.7% to +1.4%; the schedule assumes -5%"
               }
@@ -873,7 +877,7 @@
             "x": 0,
             "y": 0,
             "width": 6,
-            "height": 3
+            "height": 2
           }
         },
         {
@@ -981,7 +985,7 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
+            "y": 2,
             "width": 4,
             "height": 6
           }
@@ -1068,7 +1072,7 @@
           },
           "position": {
             "x": 4,
-            "y": 3,
+            "y": 2,
             "width": 2,
             "height": 6
           }
@@ -1396,7 +1400,7 @@
           },
           "position": {
             "x": 0,
-            "y": 9,
+            "y": 8,
             "width": 6,
             "height": 5
           }
@@ -1462,7 +1466,10 @@
                 "x": {
                   "fieldName": "n_entrants",
                   "scale": {
-                    "type": "quantitative"
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
                   },
                   "displayName": "CRS entrants in the design",
                   "axis": {
@@ -1472,7 +1479,10 @@
                 "y": {
                   "fieldName": "mde",
                   "scale": {
-                    "type": "quantitative"
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
                   },
                   "displayName": "Minimum detectable effect (%)",
                   "axis": {
@@ -1574,7 +1584,10 @@
                 "y": {
                   "fieldName": "itt",
                   "scale": {
-                    "type": "quantitative"
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
                   },
                   "displayName": "Detectable drop from the offer (%)",
                   "axis": {
@@ -1849,7 +1862,7 @@
             "x": 0,
             "y": 9,
             "width": 6,
-            "height": 3
+            "height": 4
           }
         },
         {
@@ -2076,9 +2089,9 @@
           },
           "position": {
             "x": 0,
-            "y": 12,
+            "y": 13,
             "width": 6,
-            "height": 5
+            "height": 7
           }
         }
       ]
@@ -2146,7 +2159,7 @@
                 "showTitle": true,
                 "title": "Days since last run",
                 "showDescription": true,
-                "description": "The job is scheduled monthly (paused in development mode)"
+                "description": "Scheduled monthly"
               }
             }
           },
@@ -2388,8 +2401,8 @@
                       "expression": "`failing_rows`"
                     },
                     {
-                      "name": "failing_share_pct",
-                      "expression": "`failing_share_pct`"
+                      "name": "failing_share_label",
+                      "expression": "`failing_share_label`"
                     }
                   ]
                 }
@@ -2543,14 +2556,14 @@
                     "numberFormat": "0"
                   },
                   {
-                    "fieldName": "failing_share_pct",
+                    "fieldName": "failing_share_label",
                     "title": "Share of table (%)",
                     "displayName": "Share of table (%)",
-                    "type": "float",
-                    "displayAs": "number",
+                    "type": "string",
+                    "displayAs": "string",
                     "visible": true,
                     "order": 100005,
-                    "alignContent": "right",
+                    "alignContent": "left",
                     "booleanValues": [
                       "false",
                       "true"
@@ -2567,8 +2580,7 @@
                     "linkUrlTemplate": "{{ @ }}",
                     "linkTextTemplate": "{{ @ }}",
                     "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "numberFormat": "0.00"
+                    "linkOpenInNewTab": true
                   }
                 ]
               },
@@ -2576,7 +2588,7 @@
                 "showTitle": true,
                 "title": "Quality checks, latest run",
                 "showDescription": true,
-                "description": "Failures first. Share is blank for checks that compare totals or count groups."
+                "description": "Failures first. Share is n/a for checks that compare totals or count groups."
               }
             }
           },

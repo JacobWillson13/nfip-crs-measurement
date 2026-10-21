@@ -163,6 +163,9 @@ table_counts as (
 select l.check_name, l.layer, l.severity, l.failing_rows,
        case when l.passed then 'Passed' when l.severity = 'error' then 'Blocking' else 'Warning' end as status,
        round(100 * l.failing_rows / c.n, 2)                       as failing_share_pct,
+       case when c.n is null then 'n/a'
+            when l.failing_rows > 0 and 100 * l.failing_rows / c.n < 0.01 then '<0.01'
+            else format_number(100 * l.failing_rows / c.n, 2) end  as failing_share_label,
        case when l.passed then 1 else 0 end                       as passed_flag,
        case when l.passed then 0 when l.severity = 'error' then 1 else 0 end as blocking,
        case when not l.passed and l.severity = 'warn' then 1 else 0 end      as warning,
