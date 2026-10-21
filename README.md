@@ -1,6 +1,13 @@
 # NFIP CRS Measurement
 
 [![ci](https://github.com/JacobWillson13/nfip-crs-measurement/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobWillson13/nfip-crs-measurement/actions/workflows/ci.yml)
+[![Databricks](https://img.shields.io/badge/Databricks-Asset_Bundle-FF3621?logo=databricks&logoColor=white)](databricks/README.md)
+[![Delta Lake](https://img.shields.io/badge/Delta_Lake-Unity_Catalog-00ADD4)](databricks/README.md)
+[![MLflow](https://img.shields.io/badge/MLflow-tracked-0194E2?logo=mlflow&logoColor=white)](databricks/README.md)
+[![Apache Spark](https://img.shields.io/badge/Apache_Spark-4.0-E25A1C?logo=apachespark&logoColor=white)](pipeline/spark_sql.py)
+[![DuckDB](https://img.shields.io/badge/DuckDB-local_pipeline-FFF000?logo=duckdb&logoColor=black)](ARCHITECTURE.md)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Data: OpenFEMA](https://img.shields.io/badge/data-OpenFEMA-1F6FEB)](https://www.fema.gov/about/openfema/data-sets)
 
 ![Overview page of the NFIP CRS measurement dashboard on Databricks](databricks/screenshots/overview.png)
 
