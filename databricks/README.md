@@ -74,7 +74,7 @@ python databricks/build_dashboard.py
 databricks bundle deploy
 ```
 
-Edits made in the UI are overwritten on the next deploy. Free Edition dashboards cannot be shared publicly, so screenshots of each page go in `databricks/screenshots/` for the README.
+Edits made in the UI are overwritten on the next deploy. Free Edition dashboards cannot be shared publicly, so screenshots of each page are in `databricks/screenshots/` and shown on the [main README](../README.md#dashboard).
 
 ## Mapping to Microsoft Fabric
 
