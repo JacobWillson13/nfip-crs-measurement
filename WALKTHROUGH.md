@@ -32,9 +32,9 @@ The pipeline runs locally in DuckDB and as a scheduled Databricks job from the s
 
 ## Emphasis by interview
 
-**Senior Data Engineer:** spend most of the time on sections 2, 3, and 7. Open `ARCHITECTURE.md` and `pipeline/transform/sql/15_silver_policy_exposure.sql`, show `ops.run_log` and `ops.dq_results`, then the Databricks job run, `databricks.yml`, and `tests/test_spark_parity.py`.
+**Senior Data Engineer:** spend most of the time on sections 2, 3, and 7. Open `ARCHITECTURE.md` and `pipeline/transform/sql/15_silver_policy_exposure.sql`, show `ops.run_log` and `ops.dq_results`, then the Databricks job run, the Unity Catalog lineage, the dashboard's Pipeline health page, `databricks.yml`, and `tests/test_spark_parity.py`.
 
-**Measurement Science:** spend most of the time on sections 3 to 6. Open `analysis/RESULTS.md` at sections C and D and show the figures, then `analysis/EXPERIMENT.md`.
+**Measurement Science:** spend most of the time on sections 3 to 6. Open the dashboard's Overview and Pricing decision pages, then `analysis/RESULTS.md` at sections C and D, then `analysis/EXPERIMENT.md`.
 
 ## Likely questions
 

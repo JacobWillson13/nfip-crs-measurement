@@ -1,10 +1,19 @@
 # NFIP CRS Measurement
 
+[![ci](https://github.com/JacobWillson13/nfip-crs-measurement/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobWillson13/nfip-crs-measurement/actions/workflows/ci.yml)
+
 ![Overview page of the NFIP CRS measurement dashboard on Databricks](databricks/screenshots/overview.png)
 
 **Business question:** FEMA's Community Rating System (CRS) gives flood insurance discounts of 5% to 45% to communities that invest in floodplain management. Are those discounts in line with the loss reduction they actually buy, and how confident can we be?
 
-**Answer so far:** within the same county and year, each CRS class step is associated with about 5% fewer claims per policy-year (95% CI: 1.6% to 8.5%, placebo-calibrated) and about 6% lower loss cost (95% CI: 12.7% lower to 1.4% higher), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured with public data: placebo tests show even the best available design can only detect a drop of about 50% in claims. Turned into a decision: re-pricing on today's evidence would barely reduce expected pricing error, while halving the uncertainty is worth about $96M a year, so better data is the high-value move; the Class 7 and 9 discounts are the most likely to be too generous. Details in [analysis/RESULTS.md](analysis/RESULTS.md).
+**Answer:** the discounts are priced about right on average, but two classes are likely over-discounted.
+
+- Within the same county and year, each CRS class step comes with about 5% fewer claims per policy-year (95% CI: 1.6% to 8.5%, placebo-calibrated) and about 6% lower loss cost (95% CI: 12.7% lower to 1.4% higher), against a scheduled discount of 5% per step.
+- By class, the Class 7 and Class 9 discounts are the most likely to be too generous (85% and 94% probability).
+- The causal effect of joining CRS can't be measured with public data: placebo tests show even the best available design can only detect a drop of about 50% in claims.
+- As a decision: re-pricing on today's evidence would barely reduce expected pricing error, while halving the uncertainty is worth about $96M a year, so better data is the high-value move.
+
+Details in [analysis/RESULTS.md](analysis/RESULTS.md).
 
 **Data finding:** FEMA's redacted policies and claims stamp each community's *current* CRS class onto every historical record. The pipeline's feasibility gates caught this on the first national load, and CRS history is rebuilt from Community Status Book dates instead. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -63,8 +72,8 @@ Needs Linux or macOS, Python 3.11+, about 15 GB free disk, 16 GB RAM recommended
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,analysis]"
-pytest -q                                          # 43 tests, no network needed
-pip install -e ".[spark]" && pytest -q tests/test_spark_parity.py   # optional: Spark parity, needs Java 17+
+pytest -q                                          # 55 tests, no network needed
+pip install -e ".[spark]" && pytest -q tests/test_spark_parity.py tests/test_dashboard_sql.py   # optional, needs Java 17+
 
 # 1. API sources: national claims (about 273 API pages) and the Community Status Book
 python -m pipeline.cli ingest
@@ -114,7 +123,7 @@ pipeline/quality/             quality and reconciliation checks, feasibility rep
 pipeline/cli.py               ingest | download | register | transform | quality | report | export
 tests/                        unit and end-to-end tests against a fake API and synthetic policies
 analysis/                     measurement plan, estimates, placebo design checks, pricing decision, experiment design
-databricks.yml, databricks/   Asset Bundle: serverless job notebooks, upload script, dashboard queries
+databricks.yml, databricks/   Asset Bundle: serverless job notebooks, upload script, dashboard as code, screenshots
 pipeline/spark_sql.py         runs the same gold SQL and quality checks on Spark
 powerbi/                      Power BI alternative to the Databricks dashboard (CSV inputs in data/export/bi/)
 ```

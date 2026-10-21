@@ -8,3 +8,7 @@ __pycache__/
 .ipynb_checkpoints/
 logs/
 *.log
+# local Spark test runs
+spark-warehouse/
+metastore_db/
+derby.log
