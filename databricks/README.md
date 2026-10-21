@@ -50,20 +50,31 @@ The analysis task also logs an MLflow run to the experiment `/Users/<you>/nfip-c
 
 ## Dashboard
 
-Build it once in the UI, then save its definition into the bundle so it deploys with everything else.
+The AI/BI dashboard is defined in code and deploys with the bundle, so it is versioned and reviewed like everything else.
 
-1. **Dashboards -> Create dashboard -> Data -> Create from SQL**, one dataset per query in [dashboard_queries.sql](dashboard_queries.sql).
-2. Pages:
-   - **Losses:** line charts of `claims_per_1k_policy_years` and `paid_musd` by year from `losses_by_year`, with a state filter.
-   - **Pricing decision:** `class_decision` as a bar chart of `pooled_loss_cost_effect_pct` next to `scheduled_discount_pct` by class, plus a table with `p_too_generous_pct`, `expected_gap_musd`, `evpi_musd`, `evsi_half_variance_musd`.
-   - **Designs:** `entry_design` as a line chart of `mde_pct` by `n_entrants`, colored by design; `experiment_power` as a table.
-   - **Pipeline health:** counters of passed and failed checks and a table of failing checks from `pipeline_health`; the latest loads from `load_log`.
-3. Publish it, then save the definition into the repo:
-   ```
-   databricks bundle generate dashboard --existing-id <dashboard id from the URL>
-   ```
-   This writes a `resources/*.yml` and a `.lvdash.json`. Add `include: [resources/*.yml]` to `databricks.yml` and commit both.
-4. Screenshots of each page go in `databricks/screenshots/` for the README, since Free Edition dashboards cannot be shared publicly.
+- [dashboard_queries.sql](dashboard_queries.sql) holds the SQL, one dataset per `-- dataset:` block.
+- [build_dashboard.py](build_dashboard.py) adds the pages and widgets and writes [dashboards/nfip_crs.lvdash.json](dashboards/nfip_crs.lvdash.json).
+- [tests/test_dashboard.py](../tests/test_dashboard.py) checks that the committed JSON matches the generator, that every widget points at a real dataset and field, and that widgets don't overlap.
+
+Pages:
+
+| Page | What it shows |
+| --- | --- |
+| Overview | The answer in one paragraph (numbers read from `analysis/results/`); loss cost per class step with its placebo-corrected interval, the expected pricing gap, and the value of better data; scheduled vs best-supported discount by class; a state map of CRS participation; paid losses and claim frequency by year, filterable by state, CRS class, and years |
+| Pricing decision | Each class's pooled loss cost with its 90% interval against the break-even discount, the probability each discount is too generous, and the decision table (net and absolute gap, value of information) |
+| Measurement designs | Detectable effect for the observational DiD (with the real number of entrants and a realistic effect marked), the placebo check that dropped the original design, and power for the proposed randomized trial |
+| Pipeline health | Days since the last run, check counts, quality checks with failures first and failing rows as a share of the table, check outcomes across runs, and silver load reconciliation |
+
+The state and CRS class filters are dataset parameters rather than field filters: the chart shows rates, which have to be recomputed in SQL after filtering. The interval chart on the Pricing decision page is a custom Vega-Lite widget; if a workspace does not support custom visualizations, `python databricks/build_dashboard.py --standard` swaps it for a standard bar chart. [tests/test_dashboard_sql.py](../tests/test_dashboard_sql.py) runs every dataset query on local Spark with its parameters bound.
+
+To change it, edit the SQL or the generator, then:
+
+```
+python databricks/build_dashboard.py
+databricks bundle deploy
+```
+
+Edits made in the UI are overwritten on the next deploy. Free Edition dashboards cannot be shared publicly, so screenshots of each page are in `databricks/screenshots/` and shown on the [main README](../README.md#dashboard).
 
 ## Mapping to Microsoft Fabric
 

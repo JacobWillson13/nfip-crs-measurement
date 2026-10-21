@@ -1,5 +1,7 @@
 # NFIP CRS Measurement
 
+![Overview page of the NFIP CRS measurement dashboard on Databricks](databricks/screenshots/overview.png)
+
 **Business question:** FEMA's Community Rating System (CRS) gives flood insurance discounts of 5% to 45% to communities that invest in floodplain management. Are those discounts in line with the loss reduction they actually buy, and how confident can we be?
 
 **Answer so far:** within the same county and year, each CRS class step is associated with about 5% fewer claims per policy-year (95% CI: 1.6% to 8.5%, placebo-calibrated) and about 6% lower loss cost (95% CI: 12.7% lower to 1.4% higher), against a scheduled discount of 5% per step. Discounts look priced about right on average. The causal effect of joining CRS can't be measured with public data: placebo tests show even the best available design can only detect a drop of about 50% in claims. Turned into a decision: re-pricing on today's evidence would barely reduce expected pricing error, while halving the uncertainty is worth about $96M a year, so better data is the high-value move; the Class 7 and 9 discounts are the most likely to be too generous. Details in [analysis/RESULTS.md](analysis/RESULTS.md).
@@ -11,6 +13,38 @@ This repo has three parts:
 1. **A data pipeline** that pulls National Flood Insurance Program (NFIP) claims, policies, and community CRS status from OpenFEMA, turns about 75 million policy transactions into earned exposure, validates and reconciles every load, and builds a national community-year panel in DuckDB.
 2. **A measurement analysis** on that panel: loss cost by CRS class against the discount schedule, with county-by-year fixed effects; a within-county stacked difference-in-differences on CRS entry; placebo simulations that measure each design's bias, false-positive rate, and power; a Bayesian pricing decision analysis with value of information; and a pre-registered design for a randomized CRS recruitment trial ([analysis/EXPERIMENT.md](analysis/EXPERIMENT.md)). See [analysis/RESULTS.md](analysis/RESULTS.md).
 3. **A Databricks port** that runs gold, quality checks, and analysis as a scheduled serverless job on Delta tables, deployed as an Asset Bundle, from the same SQL and Python as the local pipeline, with a parity test checking the two match. See [databricks/README.md](databricks/README.md).
+
+## Runs on Databricks
+
+The gold, quality, and analysis layers run as a serverless job on Databricks Free Edition, deployed from this repo as an Asset Bundle ([databricks/README.md](databricks/README.md)).
+
+**Job run.** Four notebook tasks in sequence: load the landed silver files into Delta and reconcile row counts, build gold from the shared SQL, run the quality checks (an error-level failure stops the job here), then run the analysis.
+
+![Databricks job run graph: load_silver, build_gold, quality, and analysis tasks, all succeeded on serverless](databricks/screenshots/job-run.png)
+
+**Lineage.** Unity Catalog traces the gold panel back to its three silver tables and forward to everything that reads it: the dashboard, the quality and analysis notebooks, and the job.
+
+![Unity Catalog lineage for gold_community_year_panel, with its silver sources and downstream consumers](databricks/screenshots/lineage.png)
+
+**MLflow.** Each analysis run is logged to an MLflow experiment with its parameters, headline estimates as metrics, and the result tables and figure as artifacts. The run links back to the job run that produced it.
+
+![MLflow run artifacts: result CSVs and the CRS class relativities figure](databricks/screenshots/mlflow-run.png)
+
+## Dashboard
+
+An AI/BI dashboard, defined in code ([databricks/build_dashboard.py](databricks/build_dashboard.py)) and deployed with the bundle. The overview is at the top of this page; the other three pages:
+
+**Pricing decision.** The discount each class gets against the discount current evidence supports, the probability each discount is too generous, and the value of better data by class.
+
+![Pricing decision page: scheduled vs best-supported discount, probability too generous, and the decision table](databricks/screenshots/pricing.png)
+
+**Measurement designs.** Whether the causal effect of joining CRS can be measured: the detectable effect for the observational design, the placebo check that dropped the original design, and power for a proposed randomized trial.
+
+![Measurement designs page: detectable effect by design and size, the placebo design check, and trial power](databricks/screenshots/measurement.png)
+
+**Pipeline health.** Quality checks from the latest run with failures first, check outcomes across runs, and silver loads reconciled against their files.
+
+![Pipeline health page: check counts, quality checks, outcomes by run, and silver load reconciliation](databricks/screenshots/pipeline-health.png)
 
 ## Where to start
 
@@ -82,7 +116,7 @@ tests/                        unit and end-to-end tests against a fake API and s
 analysis/                     measurement plan, estimates, placebo design checks, pricing decision, experiment design
 databricks.yml, databricks/   Asset Bundle: serverless job notebooks, upload script, dashboard queries
 pipeline/spark_sql.py         runs the same gold SQL and quality checks on Spark
-dashboard/                    Power BI report on the panel (CSV inputs in data/export/bi/)
+powerbi/                      Power BI alternative to the Databricks dashboard (CSV inputs in data/export/bi/)
 ```
 
 ## Data sources

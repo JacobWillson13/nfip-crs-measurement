@@ -1,0 +1,2921 @@
+{
+  "datasets": [
+    {
+      "name": "headline",
+      "displayName": "One row of headline numbers for the overview counters (dollars in USD so the cou",
+      "queryLines": [
+        "select\n",
+        "  (select effect_pct from workspace.nfip.results_pricing_adequacy\n",
+        "    where model = 'A_claim_frequency_per_class_step' and coefficient = 'class_steps')   as claims_per_step_pct,\n",
+        "  (select effect_pct from workspace.nfip.results_pricing_adequacy\n",
+        "    where model = 'A_loss_cost_per_class_step' and coefficient = 'class_steps')        as loss_cost_per_step_pct,\n",
+        "  (select total_expected_abs_gap_usd from workspace.nfip.results_pooled_summary)       as expected_abs_gap_usd,\n",
+        "  (select total_evsi_half_variance_usd from workspace.nfip.results_pooled_summary)     as evsi_usd\n"
+      ]
+    },
+    {
+      "name": "losses_by_year",
+      "displayName": "Claims and paid losses by year, 2010 to 2024, filterable by state and CRS class.",
+      "queryLines": [
+        "with p as (\n",
+        "  select year, state, earned_policy_years, n_claims, paid_total,\n",
+        "         case when crs_status_basis = 'not_in_crs'            then 'Not in CRS'\n",
+        "              when crs_status_basis = 'participation_unknown' then 'Participation unknown'\n",
+        "              when crs_class is null                          then 'In CRS, class unknown'\n",
+        "              when crs_class <= 5                             then 'Class 1-5'\n",
+        "              else concat('Class ', cast(crs_class as int)) end as crs_group\n",
+        "  from workspace.nfip.gold_community_year_panel\n",
+        "  where year between 2010 and 2024\n",
+        ")\n",
+        "select year,\n",
+        "       sum(earned_policy_years)                                   as policy_years,\n",
+        "       sum(n_claims)                                              as claims,\n",
+        "       1000 * sum(n_claims) / sum(earned_policy_years)            as claims_per_1k_policy_years,\n",
+        "       sum(paid_total) / 1e9                                      as paid_busd\n",
+        "from p\n",
+        "where (size(:state) = 0 or array_contains(:state, state))\n",
+        "  and (size(:crs_group) = 0 or array_contains(:crs_group, crs_group))\n",
+        "group by year\n",
+        "order by year\n"
+      ],
+      "parameters": [
+        {
+          "displayName": "state",
+          "keyword": "state",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": []
+            }
+          }
+        },
+        {
+          "displayName": "crs_group",
+          "keyword": "crs_group",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "state_options",
+      "displayName": "States in the panel, for the state filter.",
+      "queryLines": [
+        "select distinct state from workspace.nfip.gold_community_year_panel order by state\n"
+      ]
+    },
+    {
+      "name": "crs_group_options",
+      "displayName": "CRS class groups, for the CRS class filter.",
+      "queryLines": [
+        "select crs_group from values\n",
+        "  ('Not in CRS'), ('Class 1-5'), ('Class 6'), ('Class 7'), ('Class 8'), ('Class 9'),\n",
+        "  ('In CRS, class unknown'), ('Participation unknown') as t(crs_group)\n"
+      ]
+    },
+    {
+      "name": "state_map",
+      "displayName": "Share of NFIP policy-years in CRS communities by state, 2022 to 2024.",
+      "queryLines": [
+        "with names as (\n",
+        "  select * from values\n",
+        "    ('AL', 'Alabama'), ('AK', 'Alaska'), ('AZ', 'Arizona'), ('AR', 'Arkansas'), ('CA', 'California'),\n",
+        "    ('CO', 'Colorado'), ('CT', 'Connecticut'), ('DE', 'Delaware'), ('DC', 'District of Columbia'),\n",
+        "    ('FL', 'Florida'), ('GA', 'Georgia'), ('HI', 'Hawaii'), ('ID', 'Idaho'), ('IL', 'Illinois'),\n",
+        "    ('IN', 'Indiana'), ('IA', 'Iowa'), ('KS', 'Kansas'), ('KY', 'Kentucky'), ('LA', 'Louisiana'),\n",
+        "    ('ME', 'Maine'), ('MD', 'Maryland'), ('MA', 'Massachusetts'), ('MI', 'Michigan'), ('MN', 'Minnesota'),\n",
+        "    ('MS', 'Mississippi'), ('MO', 'Missouri'), ('MT', 'Montana'), ('NE', 'Nebraska'), ('NV', 'Nevada'),\n",
+        "    ('NH', 'New Hampshire'), ('NJ', 'New Jersey'), ('NM', 'New Mexico'), ('NY', 'New York'),\n",
+        "    ('NC', 'North Carolina'), ('ND', 'North Dakota'), ('OH', 'Ohio'), ('OK', 'Oklahoma'), ('OR', 'Oregon'),\n",
+        "    ('PA', 'Pennsylvania'), ('RI', 'Rhode Island'), ('SC', 'South Carolina'), ('SD', 'South Dakota'),\n",
+        "    ('TN', 'Tennessee'), ('TX', 'Texas'), ('UT', 'Utah'), ('VT', 'Vermont'), ('VA', 'Virginia'),\n",
+        "    ('WA', 'Washington'), ('WV', 'West Virginia'), ('WI', 'Wisconsin'), ('WY', 'Wyoming')\n",
+        "    as t(state, state_name)\n",
+        ")\n",
+        "select n.state_name,\n",
+        "       round(100 * sum(case when p.crs_status_basis in ('current_class', 'in_crs_class_unknown')\n",
+        "                            then p.earned_policy_years else 0 end) / sum(p.earned_policy_years), 1) as crs_share_pct\n",
+        "from workspace.nfip.gold_community_year_panel p\n",
+        "join names n on n.state = p.state\n",
+        "where p.year between 2022 and 2024\n",
+        "group by n.state_name\n"
+      ]
+    },
+    {
+      "name": "class_decision",
+      "displayName": "Pricing decision by CRS class: pooled relativity vs scheduled discount, and the ",
+      "queryLines": [
+        "select concat('Class ', crs_bin)                                  as crs_class,\n",
+        "       round(pooled_effect_pct, 1)                                as pooled_loss_cost_effect_pct,\n",
+        "       round(pooled_low90_pct, 1)                                 as low90_pct,\n",
+        "       round(pooled_high90_pct, 1)                                as high90_pct,\n",
+        "       concat(format_number(pooled_effect_pct, 1), ' (', format_number(pooled_low90_pct, 1), ' to ',\n",
+        "              format_number(pooled_high90_pct, 1), ')')           as loss_cost_interval,\n",
+        "       round(scheduled_discount_pct, 1)                           as scheduled_discount_pct,\n",
+        "       round(-scheduled_discount_pct, 1)                          as break_even_pct,\n",
+        "       round(pooled_effect_pct + scheduled_discount_pct, 1)       as losses_above_discount_pts,\n",
+        "       round(100 * p_discount_too_generous, 0)                    as p_too_generous_pct,\n",
+        "       round(expected_gap_usd / 1e6, 1)                           as expected_gap_musd,\n",
+        "       round(expected_abs_gap_usd / 1e6, 1)                       as expected_abs_gap_musd,\n",
+        "       round(best_discount_pct, 1)                                as best_discount_pct,\n",
+        "       round(evpi_usd / 1e6, 1)                                   as evpi_musd,\n",
+        "       round(evsi_half_variance_usd / 1e6, 1)                     as evsi_half_variance_musd\n",
+        "from workspace.nfip.results_pricing_decision\n",
+        "order by crs_bin\n"
+      ]
+    },
+    {
+      "name": "discount_compare",
+      "displayName": "Scheduled discount vs the discount that best fits current evidence, by CRS class",
+      "queryLines": [
+        "select concat('Class ', crs_bin) as crs_class, 'Scheduled' as discount_type,\n",
+        "       round(scheduled_discount_pct, 1) as discount_pct\n",
+        "from workspace.nfip.results_pricing_decision\n",
+        "union all\n",
+        "select concat('Class ', crs_bin), 'Best on current evidence', round(best_discount_pct, 1)\n",
+        "from workspace.nfip.results_pricing_decision\n"
+      ]
+    },
+    {
+      "name": "entry_design",
+      "displayName": "Placebo simulation of the CRS entry difference-in-differences: detectable effect",
+      "queryLines": [
+        "select concat('Within county, ', replace(outcome, '_', ' '))      as design_outcome,\n",
+        "       n_entrants,\n",
+        "       round(mde_pct, 1)                                          as mde_pct\n",
+        "from workspace.nfip.results_c_power_design\n",
+        "where design = 'within_county'\n"
+      ]
+    },
+    {
+      "name": "entry_design_check",
+      "displayName": "Placebo checks at the actual number of CRS entrants: why the year-fixed-effects ",
+      "queryLines": [
+        "select case design when 'within_county' then 'Within county and year' else 'Year fixed effects only (original)' end\n",
+        "                                                                  as design,\n",
+        "       replace(outcome, '_', ' ')                                 as outcome,\n",
+        "       round(placebo_mean_pct, 1)                                 as bias_under_no_effect_pct,\n",
+        "       round(100 * false_positive_rate, 0)                        as false_positive_rate_pct,\n",
+        "       round(mde_pct, 1)                                          as mde_pct,\n",
+        "       case when design = 'within_county' then 'Kept, with placebo-calibrated errors' else 'Dropped: biased' end as verdict\n",
+        "from workspace.nfip.results_c_power_design\n",
+        "where n_entrants = (select min(n_entrants) from workspace.nfip.results_c_power_design)\n",
+        "order by design desc, outcome\n"
+      ]
+    },
+    {
+      "name": "experiment_power",
+      "displayName": "Proposed randomized CRS recruitment trial: detectable drop in claims by design a",
+      "queryLines": [
+        "select concat(case assignment when 'within_county' then 'Within county' else 'Whole counties' end, ', ',\n",
+        "              replace(analysis, '_', ' '))                        as design,\n",
+        "       case size when 'all' then 'All eligible' else concat('~', size, ' pilot') end as trial_size,\n",
+        "       cast(n_communities as int)                                 as communities,\n",
+        "       round(itt_mde_pct, 1)                                      as itt_mde_pct,\n",
+        "       case when itt_mde_pct >= 90 then 'Not detectable' else format_number(itt_mde_pct, 1) end\n",
+        "                                                                  as itt_mde_label,\n",
+        "       case when complier_mde_pct_p50 >= 90 then 'Not detectable' else format_number(complier_mde_pct_p50, 1) end\n",
+        "                                                                  as complier_p50_label,\n",
+        "       case when complier_mde_pct_p25 >= 90 then 'Not detectable' else format_number(complier_mde_pct_p25, 1) end\n",
+        "                                                                  as complier_p25_label\n",
+        "from workspace.nfip.results_e_experiment_power\n",
+        "where outcome = 'n_claims'\n",
+        "order by cast(n_communities as int), design\n"
+      ]
+    },
+    {
+      "name": "pipeline_health",
+      "displayName": "Quality checks from the latest job run, failures first, with failing rows as a s",
+      "queryLines": [
+        "with latest as (\n",
+        "  select * from workspace.nfip.ops_dq_results\n",
+        "  where run_at = (select max(run_at) from workspace.nfip.ops_dq_results)\n",
+        "),\n",
+        "check_tables as (\n",
+        "  select * from values ('claim_id_not_null', 'silver_nfip_claims'), ('state_is_two_letters', 'silver_nfip_claims'), ('paid_amounts_negative_adjustments', 'silver_nfip_claims'), ('year_of_loss_in_range', 'silver_nfip_claims'), ('crs_class_in_domain', 'silver_nfip_claims'), ('year_of_loss_matches_date', 'silver_nfip_claims'), ('community_id_six_chars', 'silver_nfip_claims'), ('missing_community_id', 'silver_nfip_claims'), ('construction_date_sentinel', 'silver_nfip_claims'), ('gold_mixed_crs_class_within_year', 'gold_community_year_claims'), ('status_book_crs_class_in_domain', 'silver_community_status'), ('exposure_non_negative', 'silver_policy_exposure_community_year'), ('panel_crs_class_in_domain', 'gold_community_year_panel'), ('panel_crs_status_basis_valid', 'gold_community_year_panel'), ('policy_crs_stamp_disagrees_with_history', 'gold_community_year_panel') as t(check_name, table_name)\n",
+        "),\n",
+        "table_counts as (\n",
+        "  select 'gold_community_year_claims' as table_name, count(*) as n from workspace.nfip.gold_community_year_claims\n",
+        "  union all\n",
+        "  select 'gold_community_year_panel' as table_name, count(*) as n from workspace.nfip.gold_community_year_panel\n",
+        "  union all\n",
+        "  select 'silver_community_status' as table_name, count(*) as n from workspace.nfip.silver_community_status\n",
+        "  union all\n",
+        "  select 'silver_nfip_claims' as table_name, count(*) as n from workspace.nfip.silver_nfip_claims\n",
+        "  union all\n",
+        "  select 'silver_policy_exposure_community_year' as table_name, count(*) as n from workspace.nfip.silver_policy_exposure_community_year\n",
+        ")\n",
+        "select l.check_name, l.layer, l.severity, l.failing_rows,\n",
+        "       case when l.passed then 'Passed' when l.severity = 'error' then 'Blocking' else 'Warning' end as status,\n",
+        "       round(100 * l.failing_rows / c.n, 2)                       as failing_share_pct,\n",
+        "       case when c.n is null then 'n/a'\n",
+        "            when l.failing_rows > 0 and 100 * l.failing_rows / c.n < 0.01 then '<0.01'\n",
+        "            else format_number(100 * l.failing_rows / c.n, 2) end  as failing_share_label,\n",
+        "       case when l.passed then 1 else 0 end                       as passed_flag,\n",
+        "       case when l.passed then 0 when l.severity = 'error' then 1 else 0 end as blocking,\n",
+        "       case when not l.passed and l.severity = 'warn' then 1 else 0 end      as warning,\n",
+        "       round((unix_timestamp(current_timestamp()) - unix_timestamp(l.run_at)) / 86400, 1) as days_since_run,\n",
+        "       (select count(distinct run_at) from workspace.nfip.ops_dq_results) as runs_recorded\n",
+        "from latest l\n",
+        "left join check_tables t on t.check_name = l.check_name\n",
+        "left join table_counts c on c.table_name = t.table_name\n",
+        "order by case when l.passed then 2 when l.severity = 'error' then 0 else 1 end, l.failing_rows desc, l.check_name\n"
+      ]
+    },
+    {
+      "name": "dq_history",
+      "displayName": "Check outcomes per job run, for the run history chart.",
+      "queryLines": [
+        "select date_format(run_at, 'yyyy-MM-dd HH:mm')                    as run,\n",
+        "       case when passed then 'Passed' when severity = 'error' then 'Blocking' else 'Warning' end as status,\n",
+        "       count(*)                                                   as checks\n",
+        "from workspace.nfip.ops_dq_results\n",
+        "group by 1, 2\n",
+        "order by 1\n"
+      ]
+    },
+    {
+      "name": "load_log",
+      "displayName": "Latest silver load per dataset, with file vs table row counts.",
+      "queryLines": [
+        "select dataset, file_rows, table_rows, status, loaded_at\n",
+        "from workspace.nfip.ops_load_log\n",
+        "qualify row_number() over (partition by dataset order by loaded_at desc) = 1\n",
+        "order by dataset\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Overview",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_01",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# CRS flood discounts are right on average, but two of five classes get too much\n",
+                "Comparing communities in the same county and year, so they faced the same storms, each CRS class step cuts loss\n",
+                "cost 5.9% against a scheduled 5% discount. Class 7 and Class 9 are likely\n",
+                "over-discounted (85% and 94% probability). The evidence is thin, so better data is worth more than re-pricing:\n",
+                "about $96M a year.\n",
+                "\n",
+                "335,000 NFIP community-years, 2010 to 2024. [Pipeline, methods, and caveats on GitHub](https://github.com/JacobWillson13/nfip-crs-measurement)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_02",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`loss_cost_per_step_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Loss cost per class step",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Loss cost per class step",
+                "showDescription": true,
+                "description": "95% interval -12.7% to +1.4%; the schedule assumes -5%"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_03",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`expected_abs_gap_usd`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Expected pricing gap per year",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Expected pricing gap per year",
+                "showDescription": true,
+                "description": "Sum over classes of |premium at the scheduled discount - expected loss|"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_04",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "headline",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`evsi_usd`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Value of halving uncertainty per year",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Value of halving uncertainty per year",
+                "showDescription": true,
+                "description": "Expected cut in that gap from about twice the evidence"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "custom_05",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "crsClass",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "pooled",
+                      "expression": "`pooled_loss_cost_effect_pct`"
+                    },
+                    {
+                      "name": "low90",
+                      "expression": "`low90_pct`"
+                    },
+                    {
+                      "name": "high90",
+                      "expression": "`high90_pct`"
+                    },
+                    {
+                      "name": "breakEven",
+                      "expression": "`break_even_pct`"
+                    },
+                    {
+                      "name": "pTooGenerous",
+                      "expression": "`p_too_generous_pct`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "custom-vega-viz",
+              "data": {
+                "queryName": "main_query"
+              },
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "crsClass"
+                  },
+                  {
+                    "fieldName": "pooled"
+                  },
+                  {
+                    "fieldName": "low90"
+                  },
+                  {
+                    "fieldName": "high90"
+                  },
+                  {
+                    "fieldName": "breakEven"
+                  },
+                  {
+                    "fieldName": "pTooGenerous"
+                  }
+                ]
+              },
+              "jsonSpec": {
+                "type": "vega-lite",
+                "spec": "{\"$schema\": \"https://vega.github.io/schema/vega-lite/v6.json\", \"data\": {\"name\": \"databricks_query\"}, \"width\": \"container\", \"height\": \"container\", \"config\": {\"autosize\": {\"type\": \"fit\", \"contains\": \"padding\"}, \"view\": {\"stroke\": null}}, \"layer\": [{\"mark\": {\"type\": \"rule\", \"strokeDash\": [3, 3], \"opacity\": 0.4, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"x\": {\"datum\": 0, \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}}}, {\"mark\": {\"type\": \"rule\", \"strokeWidth\": 4, \"opacity\": 0.45, \"strokeCap\": \"round\"}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"x2\": {\"field\": \"high90\"}, \"color\": {\"condition\": {\"test\": \"datum.pTooGenerous >= 80\", \"value\": \"#E8734A\"}, \"value\": \"#2A78D6\"}}}, {\"mark\": {\"type\": \"tick\", \"thickness\": 3, \"size\": 30, \"color\": {\"expr\": \"colors.textPrimary.default\"}}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}, {\"mark\": {\"type\": \"point\", \"filled\": true, \"size\": 180, \"opacity\": 1}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"color\": {\"condition\": {\"test\": \"datum.pTooGenerous >= 80\", \"value\": \"#E8734A\"}, \"value\": \"#2A78D6\"}, \"tooltip\": [{\"field\": \"crsClass\", \"type\": \"nominal\", \"title\": \"Class\"}, {\"field\": \"pooled\", \"type\": \"quantitative\", \"title\": \"Estimate (%)\", \"format\": \".1f\"}, {\"field\": \"low90\", \"type\": \"quantitative\", \"title\": \"90% low (%)\", \"format\": \".1f\"}, {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"90% high (%)\", \"format\": \".1f\"}, {\"field\": \"breakEven\", \"type\": \"quantitative\", \"title\": \"Break-even (%)\", \"format\": \".1f\"}, {\"field\": \"pTooGenerous\", \"type\": \"quantitative\", \"title\": \"P(too generous) %\", \"format\": \".0f\"}]}}, {\"transform\": [{\"filter\": \"datum.pTooGenerous >= 80\"}, {\"calculate\": \"format(datum.pTooGenerous, '.0f') + '% likely too generous'\", \"as\": \"flagLabel\"}], \"mark\": {\"type\": \"text\", \"align\": \"left\", \"dx\": 10, \"fontSize\": 12, \"fontWeight\": \"bold\", \"color\": \"#E8734A\"}, \"encoding\": {\"y\": {\"field\": \"crsClass\", \"type\": \"nominal\", \"sort\": [\"Class 1-5\", \"Class 6\", \"Class 7\", \"Class 8\", \"Class 9\"], \"title\": null, \"axis\": {\"labelFontSize\": 13, \"labelPadding\": 8}}, \"x\": {\"field\": \"high90\", \"type\": \"quantitative\", \"title\": \"Loss cost vs non-CRS neighbors (%)\", \"scale\": {\"domain\": [-60, 100]}, \"axis\": {\"values\": [-50, -25, 0, 25, 50]}}, \"text\": {\"field\": \"flagLabel\"}}}]}"
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Where each discount stands",
+                "showDescription": true,
+                "description": "Dot and bar: loss cost vs non-CRS neighbors in the same county and year, with 90% interval. Tick: break-even at the scheduled discount. Coral: the discount is likely too generous (80% or more)."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "map_06",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "state_map",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "state_name",
+                      "expression": "`state_name`"
+                    },
+                    {
+                      "name": "crs_share",
+                      "expression": "SUM(`crs_share_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "choropleth-map",
+              "encodings": {
+                "region": {
+                  "regionType": "mapbox-v4-admin",
+                  "admin0": {
+                    "type": "value",
+                    "value": "United States",
+                    "geographicRole": "admin0-name"
+                  },
+                  "admin1": {
+                    "fieldName": "state_name",
+                    "type": "field",
+                    "geographicRole": "admin1-name"
+                  }
+                },
+                "color": {
+                  "fieldName": "crs_share",
+                  "displayName": "In CRS (%)",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "custom-sequential",
+                      "colors": {
+                        "start": "#DCEBF7",
+                        "end": "#0B4F8A"
+                      }
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Policies in CRS communities (%)",
+                "showDescription": true,
+                "description": "Share of NFIP policy-years, 2022 to 2024"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 5,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "text_07",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Losses over time\n",
+                "The filters apply to this chart only."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_08",
+            "queries": [
+              {
+                "name": "values_state",
+                "query": {
+                  "datasetName": "state_options",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "state",
+                      "expression": "`state`"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "param_state_losses_by_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "parameters": [
+                    {
+                      "name": "state",
+                      "keyword": "state"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "state",
+                    "displayName": "State",
+                    "queryName": "values_state"
+                  },
+                  {
+                    "parameterName": "state",
+                    "queryName": "param_state_losses_by_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "State"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 12,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_09",
+            "queries": [
+              {
+                "name": "values_crs_group",
+                "query": {
+                  "datasetName": "crs_group_options",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_group",
+                      "expression": "`crs_group`"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "param_crs_group_losses_by_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "parameters": [
+                    {
+                      "name": "crs_group",
+                      "keyword": "crs_group"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "crs_group",
+                    "displayName": "CRS class",
+                    "queryName": "values_crs_group"
+                  },
+                  {
+                    "parameterName": "crs_group",
+                    "queryName": "param_crs_group_losses_by_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "CRS class"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 12,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_10",
+            "queries": [
+              {
+                "name": "range_losses_by_year_year",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "min(year)",
+                      "expression": "MIN(`year`)"
+                    },
+                    {
+                      "name": "max(year)",
+                      "expression": "MAX(`year`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "range-slider",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "year",
+                    "queryName": "range_losses_by_year_year"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Years"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 12,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "combo_11",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "losses_by_year",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "paid",
+                      "expression": "SUM(`paid_busd`)"
+                    },
+                    {
+                      "name": "claims_per_1k",
+                      "expression": "SUM(`claims_per_1k_policy_years`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "year",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Year",
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "paid",
+                        "displayName": "Paid losses ($B)"
+                      }
+                    ]
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "claims_per_1k",
+                        "displayName": "Claims per 1,000 policy-years"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Paid losses and claim frequency",
+                "showDescription": true,
+                "description": "National peaks: 2012 (Sandy), 2017 (Harvey, Irma, Maria), 2024 (Helene, Milton); 2022 losses are mostly Ian"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "pricing",
+      "displayName": "Pricing decision",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_12",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pricing decision by CRS class\n",
+                "Class relativities are partially pooled in a Bayesian hierarchical model, with uncertainty widened by placebo\n",
+                "tests. **Net gap** is premium at the scheduled discount minus expected loss: negative means the discount is too\n",
+                "generous. It can disagree with the probability (Class 1-5 is 52% likely too generous yet\n",
+                "+$23.9M net) because the loss estimate is skewed. **Abs. gap** sums to the overview's\n",
+                "$364M. Re-pricing on today's evidence barely shrinks it; better data (recovering historical CRS\n",
+                "classes) is worth far more."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_13",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "discount_compare",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "discount",
+                      "expression": "SUM(`discount_pct`)"
+                    },
+                    {
+                      "name": "discount_type",
+                      "expression": "`discount_type`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "crs_class",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "Class 1-5",
+                        "Class 6",
+                        "Class 7",
+                        "Class 8",
+                        "Class 9"
+                      ]
+                    }
+                  },
+                  "displayName": "CRS class",
+                  "axis": {
+                    "title": "CRS class"
+                  }
+                },
+                "y": {
+                  "fieldName": "discount",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Discount (%)",
+                  "axis": {
+                    "title": "Discount (%)"
+                  }
+                },
+                "label": {
+                  "show": true
+                },
+                "color": {
+                  "fieldName": "discount_type",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Scheduled",
+                        "color": "#8A99A8"
+                      },
+                      {
+                        "value": "Best on current evidence",
+                        "color": "#2A78D6"
+                      }
+                    ]
+                  },
+                  "displayName": "Discount"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Scheduled vs best-supported discount",
+                "showDescription": true,
+                "description": "Best discount minimizes the expected absolute gap; below zero is a surcharge"
+              },
+              "mark": {
+                "layout": "group"
+              },
+              "annotations": [
+                {
+                  "type": "horizontal-line",
+                  "encodings": {
+                    "y": {
+                      "dataValue": "0",
+                      "dataType": "INTEGER"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_14",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "p",
+                      "expression": "SUM(`p_too_generous_pct`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "crs_class",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "Class 1-5",
+                        "Class 6",
+                        "Class 7",
+                        "Class 8",
+                        "Class 9"
+                      ]
+                    }
+                  },
+                  "displayName": "CRS class",
+                  "axis": {
+                    "title": "CRS class"
+                  }
+                },
+                "y": {
+                  "fieldName": "p",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Probability (%)",
+                  "axis": {
+                    "title": "Probability (%)"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Probability the discount is too generous"
+              },
+              "annotations": [
+                {
+                  "type": "horizontal-line",
+                  "encodings": {
+                    "y": {
+                      "dataValue": "50",
+                      "dataType": "INTEGER"
+                    },
+                    "label": {
+                      "value": "Coin flip"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "table_15",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "class_decision",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "crs_class",
+                      "expression": "`crs_class`"
+                    },
+                    {
+                      "name": "loss_cost_interval",
+                      "expression": "`loss_cost_interval`"
+                    },
+                    {
+                      "name": "scheduled_discount_pct",
+                      "expression": "`scheduled_discount_pct`"
+                    },
+                    {
+                      "name": "best_discount_pct",
+                      "expression": "`best_discount_pct`"
+                    },
+                    {
+                      "name": "p_too_generous_pct",
+                      "expression": "`p_too_generous_pct`"
+                    },
+                    {
+                      "name": "expected_gap_musd",
+                      "expression": "`expected_gap_musd`"
+                    },
+                    {
+                      "name": "expected_abs_gap_musd",
+                      "expression": "`expected_abs_gap_musd`"
+                    },
+                    {
+                      "name": "evpi_musd",
+                      "expression": "`evpi_musd`"
+                    },
+                    {
+                      "name": "evsi_half_variance_musd",
+                      "expression": "`evsi_half_variance_musd`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "withRowNumber": false,
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "crs_class",
+                    "title": "Class",
+                    "displayName": "Class",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "loss_cost_interval",
+                    "title": "Loss cost vs non-CRS % (90% interval)",
+                    "displayName": "Loss cost vs non-CRS % (90% interval)",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "scheduled_discount_pct",
+                    "title": "Scheduled %",
+                    "displayName": "Scheduled %",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "best_discount_pct",
+                    "title": "Best now %",
+                    "displayName": "Best now %",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "p_too_generous_pct",
+                    "title": "P(too generous) %",
+                    "displayName": "P(too generous) %",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "expected_gap_musd",
+                    "title": "Net gap $M/yr",
+                    "displayName": "Net gap $M/yr",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "expected_abs_gap_musd",
+                    "title": "Abs. gap $M/yr",
+                    "displayName": "Abs. gap $M/yr",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100006,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "evpi_musd",
+                    "title": "Perfect info $M/yr",
+                    "displayName": "Perfect info $M/yr",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100007,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "evsi_half_variance_musd",
+                    "title": "Halve uncertainty $M/yr",
+                    "displayName": "Halve uncertainty $M/yr",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100008,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Decision table",
+                "showDescription": true,
+                "description": "Dollars are expected annual loss at 2022 to 2024 exposure and 2010 to 2024 loss cost"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "designs",
+      "displayName": "Measurement designs",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_16",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Can the causal effect of joining CRS be measured?\n",
+                "**Left:** placebo simulations of the entry difference-in-differences, comparing communities within the same county\n",
+                "and year. The original design (year fixed effects only) was dropped: with no true effect it reported\n",
+                "+41% and flagged fake effects 25% of the time (table below). Even the fixed\n",
+                "design detects only large effects. **Right:** a proposed randomized recruitment trial. It can measure whether\n",
+                "outreach raises participation, but not a realistic effect on claims."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "line_17",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "entry_design",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "n_entrants",
+                      "expression": "`n_entrants`"
+                    },
+                    {
+                      "name": "mde",
+                      "expression": "AVG(`mde_pct`)"
+                    },
+                    {
+                      "name": "design_outcome",
+                      "expression": "`design_outcome`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "n_entrants",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "displayName": "CRS entrants in the design",
+                  "axis": {
+                    "title": "CRS entrants in the design"
+                  }
+                },
+                "y": {
+                  "fieldName": "mde",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "displayName": "Minimum detectable effect (%)",
+                  "axis": {
+                    "title": "Minimum detectable effect (%)"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "design_outcome",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Outcome"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Observational design: detectable effect",
+                "showDescription": true,
+                "description": "Joining CRS usually starts at Class 9 or 8, a 5 to 10% discount"
+              },
+              "annotations": [
+                {
+                  "type": "horizontal-line",
+                  "encodings": {
+                    "y": {
+                      "dataValue": "10",
+                      "dataType": "INTEGER"
+                    },
+                    "label": {
+                      "value": "10%: a Class 8 discount"
+                    }
+                  }
+                },
+                {
+                  "type": "vertical-line",
+                  "encodings": {
+                    "x": {
+                      "dataValue": "395",
+                      "dataType": "INTEGER"
+                    },
+                    "label": {
+                      "value": "395 actual"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "line_18",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "experiment_power",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "communities",
+                      "expression": "`communities`"
+                    },
+                    {
+                      "name": "itt",
+                      "expression": "AVG(`itt_mde_pct`)"
+                    },
+                    {
+                      "name": "design",
+                      "expression": "`design`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "communities",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Communities in the trial",
+                  "axis": {
+                    "title": "Communities in the trial"
+                  }
+                },
+                "y": {
+                  "fieldName": "itt",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "displayName": "Detectable drop from the offer (%)",
+                  "axis": {
+                    "title": "Detectable drop from the offer (%)"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "design",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Design"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Randomized trial: detectable drop in claims",
+                "showDescription": true,
+                "description": "Realistic offer effect: 25% uptake x 20% fewer claims among joiners = 5%"
+              },
+              "annotations": [
+                {
+                  "type": "horizontal-line",
+                  "encodings": {
+                    "y": {
+                      "dataValue": "5",
+                      "dataType": "INTEGER"
+                    },
+                    "label": {
+                      "value": "5%: realistic offer effect"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "table_19",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "entry_design_check",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "design",
+                      "expression": "`design`"
+                    },
+                    {
+                      "name": "outcome",
+                      "expression": "`outcome`"
+                    },
+                    {
+                      "name": "bias_under_no_effect_pct",
+                      "expression": "`bias_under_no_effect_pct`"
+                    },
+                    {
+                      "name": "false_positive_rate_pct",
+                      "expression": "`false_positive_rate_pct`"
+                    },
+                    {
+                      "name": "mde_pct",
+                      "expression": "`mde_pct`"
+                    },
+                    {
+                      "name": "verdict",
+                      "expression": "`verdict`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "withRowNumber": false,
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "design",
+                    "title": "Design",
+                    "displayName": "Design",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "outcome",
+                    "title": "Outcome",
+                    "displayName": "Outcome",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "bias_under_no_effect_pct",
+                    "title": "Estimate with no true effect (%)",
+                    "displayName": "Estimate with no true effect (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "false_positive_rate_pct",
+                    "title": "False positives at reported SEs (%)",
+                    "displayName": "False positives at reported SEs (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "mde_pct",
+                    "title": "Detectable effect (%)",
+                    "displayName": "Detectable effect (%)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "verdict",
+                    "title": "Verdict",
+                    "displayName": "Verdict",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Design check at the 395 actual entrants",
+                "showDescription": true,
+                "description": "Placebo entry dates given to communities that never joined: a sound design reports about 0%. Reported standard errors still overstate significance, so detectable effects use the placebo spread."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "table_20",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "experiment_power",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "design",
+                      "expression": "`design`"
+                    },
+                    {
+                      "name": "trial_size",
+                      "expression": "`trial_size`"
+                    },
+                    {
+                      "name": "communities",
+                      "expression": "`communities`"
+                    },
+                    {
+                      "name": "itt_mde_label",
+                      "expression": "`itt_mde_label`"
+                    },
+                    {
+                      "name": "complier_p50_label",
+                      "expression": "`complier_p50_label`"
+                    },
+                    {
+                      "name": "complier_p25_label",
+                      "expression": "`complier_p25_label`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "withRowNumber": false,
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "design",
+                    "title": "Design",
+                    "displayName": "Design",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "trial_size",
+                    "title": "Size",
+                    "displayName": "Size",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "communities",
+                    "title": "Communities",
+                    "displayName": "Communities",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "itt_mde_label",
+                    "title": "Offer effect detectable (%)",
+                    "displayName": "Offer effect detectable (%)",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "complier_p50_label",
+                    "title": "Joining effect, 50% uptake (%)",
+                    "displayName": "Joining effect, 50% uptake (%)",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "complier_p25_label",
+                    "title": "Joining effect, 25% uptake (%)",
+                    "displayName": "Joining effect, 25% uptake (%)",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Trial power",
+                "showDescription": true,
+                "description": "Drops of 90% or more are shown as not detectable"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "health",
+      "displayName": "Pipeline health",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_21",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pipeline health\n",
+                "Latest run of the Databricks job: silver loads reconciled against their files, and quality checks that are the same\n",
+                "code as the local DuckDB pipeline (a CI test runs both on Spark and DuckDB and compares results). An error-level\n",
+                "failure stops the job before the analysis runs; warnings are recorded for review."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_22",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`days_since_run`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Days since last run",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Days since last run",
+                "showDescription": true,
+                "description": "Scheduled monthly"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_23",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "COUNT(`check_name`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Checks run"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Checks run"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_24",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "SUM(`passed_flag`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Checks passed"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Checks passed"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_25",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "SUM(`warning`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Warnings"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Warnings"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_26",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "SUM(`blocking`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Blocking failures"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Blocking failures"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_27",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "value",
+                      "expression": "MAX(`runs_recorded`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "value",
+                  "displayName": "Runs recorded"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Runs recorded"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "table_28",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_health",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "check_name",
+                      "expression": "`check_name`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "severity",
+                      "expression": "`severity`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "failing_rows",
+                      "expression": "`failing_rows`"
+                    },
+                    {
+                      "name": "failing_share_label",
+                      "expression": "`failing_share_label`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "withRowNumber": false,
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "check_name",
+                    "title": "Check",
+                    "displayName": "Check",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "layer",
+                    "title": "Layer",
+                    "displayName": "Layer",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "severity",
+                    "title": "Severity",
+                    "displayName": "Severity",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "status",
+                    "title": "Status",
+                    "displayName": "Status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "failing_rows",
+                    "title": "Failing rows",
+                    "displayName": "Failing rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "failing_share_label",
+                    "title": "Share of table (%)",
+                    "displayName": "Share of table (%)",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100005,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Quality checks, latest run",
+                "showDescription": true,
+                "description": "Failures first. Share is n/a for checks that compare totals or count groups."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 4,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_29",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_history",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "run",
+                      "expression": "`run`"
+                    },
+                    {
+                      "name": "checks",
+                      "expression": "SUM(`checks`)"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "run",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Run",
+                  "axis": {
+                    "title": "Run"
+                  }
+                },
+                "y": {
+                  "fieldName": "checks",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Checks",
+                  "axis": {
+                    "title": "Checks"
+                  }
+                },
+                "label": {
+                  "show": true
+                },
+                "color": {
+                  "fieldName": "status",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Passed",
+                        "color": "#3B9C7A"
+                      },
+                      {
+                        "value": "Warning",
+                        "color": "#E8A33D"
+                      },
+                      {
+                        "value": "Blocking",
+                        "color": "#E2574C"
+                      }
+                    ]
+                  },
+                  "displayName": "Status"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Check outcomes by run"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 2,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table_30",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "load_log",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "dataset",
+                      "expression": "`dataset`"
+                    },
+                    {
+                      "name": "file_rows",
+                      "expression": "`file_rows`"
+                    },
+                    {
+                      "name": "table_rows",
+                      "expression": "`table_rows`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "loaded_at",
+                      "expression": "`loaded_at`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "withRowNumber": false,
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "invisibleColumns": [],
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "dataset",
+                    "title": "Table",
+                    "displayName": "Table",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "file_rows",
+                    "title": "File rows",
+                    "displayName": "File rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "table_rows",
+                    "title": "Table rows",
+                    "displayName": "Table rows",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "numberFormat": "0"
+                  },
+                  {
+                    "fieldName": "status",
+                    "title": "Status",
+                    "displayName": "Status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100003,
+                    "alignContent": "left",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true
+                  },
+                  {
+                    "fieldName": "loaded_at",
+                    "title": "Loaded at",
+                    "displayName": "Loaded at",
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 100004,
+                    "alignContent": "right",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "allowSearch": false,
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Latest silver loads"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 3
+          }
+        }
+      ]
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#F6F7F9",
+        "dark": "#12181D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#1B232A"
+      },
+      "fontColor": {
+        "light": "#1B232A",
+        "dark": "#E8ECF0"
+      },
+      "selectionColor": {
+        "light": "#2272B4",
+        "dark": "#8ACAFF"
+      },
+      "visualizationColors": [
+        "#2A78D6",
+        "#E8734A",
+        "#3B9C7A",
+        "#8A99A8",
+        "#E8A33D",
+        "#7B5EA7",
+        "#5AB4C5"
+      ],
+      "widgetHeaderAlignment": "LEFT"
+    }
+  }
+}

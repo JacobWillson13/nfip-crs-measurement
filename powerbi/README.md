@@ -12,7 +12,7 @@ A three-page report on the panel, built in the Power BI service (browser), so it
 | `dq_results.csv` | ~25 | Latest quality check results |
 | `run_log.csv` | ~60 | Every load attempt |
 
-Then `python dashboard/build_workbook.py` bundles them, plus the class effects from `analysis/results/`, into one workbook, `data/export/nfip_crs_report.xlsx` (about 22 MB). Upload that single file so one report can hold all three pages.
+Then `python powerbi/build_workbook.py` bundles them, plus the class effects from `analysis/results/`, into one workbook, `data/export/nfip_crs_report.xlsx` (about 22 MB). Upload that single file so one report can hold all three pages.
 
 ## Pages
 
